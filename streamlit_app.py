@@ -1,16 +1,16 @@
-import streamlit as st
+import os
+import re
+from collections import Counter
+
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-from io import StringIO
+import plotly.express as px
+import streamlit as st
 
-st.set_page_config(
-    page_title="HSLU Sense of Belonging",
-    layout="wide",
-)
+st.set_page_config(page_title="HSLU Sense of Belonging", layout="wide")
 
 # ---------------------------------------------------
-# CSS
+# STYLE
 # ---------------------------------------------------
 st.markdown(
     """
@@ -50,23 +50,11 @@ st.markdown(
             color: white !important;
         }
 
-        .dashboard-title {
-            font-size: 1.15rem;
-            font-weight: 700;
-            margin-bottom: 0.4rem;
-        }
-
-        .section-title {
-            font-size: 1rem;
-            font-weight: 700;
-            margin-top: 0.2rem;
-            margin-bottom: 0.35rem;
-        }
-
-        .small-label {
-            font-size: 0.85rem;
+        .small-note {
             color: #666666;
-            margin-bottom: 0.2rem;
+            font-size: 0.88rem;
+            margin-top: -0.2rem;
+            margin-bottom: 0.75rem;
         }
     </style>
     """,
@@ -74,276 +62,519 @@ st.markdown(
 )
 
 # ---------------------------------------------------
-# DATA HELPERS
+# CONFIG
 # ---------------------------------------------------
-def make_bar_values(seed: int, n: int = 8):
-    rng = np.random.default_rng(seed)
-    return rng.integers(20, 95, size=n)
+DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
 
-def make_pie_values(seed: int):
-    rng = np.random.default_rng(seed)
-    a = int(rng.integers(20, 45))
-    b = 100 - a
-    return [a, b]
+# Diese Fragen aus den Screenshots werden ignoriert
+SCREENSHOT_IGNORE_KEYWORDS = [
+    "erste person in ihrer familie",
+    "wichtige gründe für ihr studium",
+    "familie ihre entscheidung beeinflusst",
+    "wie stark treffen folgende herausforderungen auf sie zu",
+    "wann empfanden sie ihr studium bisher als besonders herausfordernd",
+    "welche unterstützungsangebote kennen sie",
+    "welche angebote haben sie genutzt",
+    "welche unterstützung hätten sie sich gewünscht",
+    "was hilft ihnen im studium besonders",
+    "familie kann mich bei studienbezogenen fragen unterstützen",
+    "mehr leisten zu müssen als andere",
+    "finanzielle sorgen beeinflussen mein studium",
+]
+
+STOPWORDS_DE = {
+    "ich", "und", "der", "die", "das", "dass", "ist", "sind", "mit", "mich", "mir",
+    "mein", "meine", "meiner", "meinem", "wir", "uns", "zu", "im", "in", "an", "auf",
+    "für", "von", "bei", "nicht", "auch", "eine", "einer", "einem", "ein", "einen",
+    "den", "dem", "des", "oder", "als", "aber", "man", "mehr", "sehr", "noch", "nur",
+    "durch", "wenn", "werden", "wird", "studium", "hochschule", "hslu", "sich",
+    "sein", "zum", "zur", "am", "da", "es", "vor", "nach", "über", "unter", "hat",
+    "haben", "hilft", "fühle", "fühlen", "zugehörig", "wohler", "integrierter"
+}
 
 # ---------------------------------------------------
-# CHART HELPERS
+# HELPERS
 # ---------------------------------------------------
-def bar_chart(seed: int, height: int = 220):
-    values = make_bar_values(seed)
-    labels = [f"C{i+1}" for i in range(len(values))]
+def normalize(text):
+    text = str(text or "").strip().lower()
+    text = re.sub(r"\s+", " ", text)
+    return text
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=labels,
-            y=values,
-            marker_color="#d9d9d9",
-            marker_line_color="#4a4a4a",
-            marker_line_width=1.1,
-        )
+
+def is_ignored_column(col_name):
+    col_norm = normalize(col_name)
+    return any(keyword in col_norm for keyword in SCREENSHOT_IGNORE_KEYWORDS)
+
+
+def find_column(df, contains_text):
+    contains_text = normalize(contains_text)
+    for col in df.columns:
+        if contains_text in normalize(col):
+            return col
+    return None
+
+
+def find_columns(df, contains_texts):
+    cols = []
+    for text in contains_texts:
+        col = find_column(df, text)
+        if col:
+            cols.append(col)
+    return cols
+
+
+def to_numeric_series(series):
+    return pd.to_numeric(
+        series.astype(str)
+        .str.extract(r"(\d+(?:[.,]\d+)?)")[0]
+        .str.replace(",", ".", regex=False),
+        errors="coerce",
+    )
+
+
+def shorten_question(text):
+    text = str(text).strip()
+    text = re.sub(r"\s+", " ", text)
+    if len(text) <= 75:
+        return text
+    return text[:72] + "..."
+
+
+@st.cache_data
+def load_data(uploaded_file):
+    if uploaded_file is not None:
+        raw = pd.read_excel(uploaded_file)
+    elif os.path.exists(DEFAULT_FILE):
+        raw = pd.read_excel(DEFAULT_FILE)
+    else:
+        return None, None
+
+    raw.columns = [str(c).strip() for c in raw.columns]
+
+    for col in raw.columns:
+        if raw[col].dtype == object:
+            raw[col] = raw[col].astype(str).str.strip()
+            raw[col] = raw[col].replace({"": np.nan, "nan": np.nan, "None": np.nan})
+
+    ignored_columns = [col for col in raw.columns if is_ignored_column(col)]
+    return raw, ignored_columns
+
+
+def add_score_columns(df):
+    general_cols = find_columns(df, [
+        "ich fühle mich an meiner hochschule willkommen",
+        "ich habe das gefühl, dass ich als student",
+        "ich empfinde ein zugehörigkeitsgefühl gegenüber meiner studienrichtung",
+        "ich werde als person an der hochschule wahrgenommen",
+        "ich identifiziere mich mit der kultur und den werten meiner hochschule",
+    ])
+
+    social_cols = find_columns(df, [
+        "ich habe im studium freundschaften",
+        "ich fühle mich in der studierendenschaft gut integriert",
+        "ich habe mitstudierende, mit denen ich offen über herausforderungen sprechen kann",
+        "in gruppenarbeiten oder im unterricht fühle ich mich ernst genommen",
+        "ich weiss, wo ich soziale unterstützung an der hochschule finden kann",
+        "ich habe im studium personen, an die ich mich bei persönlichen oder sozialen unsicherheiten wenden kann",
+    ])
+
+    academic_cols = find_columns(df, [
+        "ich fühle mich im unterricht / in lehrveranstaltungen respektiert",
+        "ich habe das gefühl, dass meine sichtweisen",
+        "ich kann fragen stellen oder beiträge leisten, ohne mich unwohl zu fühlen",
+        "die hochschule unterstützt mich in meiner persönlichen und akademischen entwicklung",
+        "ich weiss, an wen ich mich bei fachlichen fragen oder unsicherheiten wenden kann",
+    ])
+
+    diversity_cols = find_columns(df, [
+        "meine herkunft, sprache oder soziale situation werden an der hochschule respektiert",
+        "ich habe das gefühl, dass vielfalt im studium wertgeschätzt wird",
+        "ich kann mich im hochschulalltag authentisch zeigen",
+    ])
+
+    groups = {
+        "Allgemein": general_cols,
+        "Sozial": social_cols,
+        "Akademisch": academic_cols,
+        "Vielfalt": diversity_cols,
+    }
+
+    df = df.copy()
+    all_score_cols = []
+
+    for group_name, cols in groups.items():
+        numeric_cols = []
+        for col in cols:
+            num_col = f"__num__{col}"
+            df[num_col] = to_numeric_series(df[col])
+            numeric_cols.append(num_col)
+            all_score_cols.append(num_col)
+
+        df[f"score_{group_name.lower()}"] = df[numeric_cols].mean(axis=1)
+
+    df["score_overall"] = df[all_score_cols].mean(axis=1)
+
+    return df, groups
+
+
+def filter_dataframe(df, filter_map):
+    filtered = df.copy()
+    for col, selected_values in filter_map.items():
+        if col and selected_values:
+            filtered = filtered[filtered[col].isin(selected_values)]
+    return filtered
+
+
+def make_mean_bar(data, x, y, title, orientation="v"):
+    if x is None or y is None or y not in data.columns:
+        return None
+
+    temp = data[[x, y]].dropna()
+    if temp.empty:
+        return None
+
+    chart_df = (
+        temp.groupby(x, dropna=False)[y]
+        .mean()
+        .reset_index()
+        .sort_values(y, ascending=(orientation == "h"))
+    )
+
+    fig = px.bar(
+        chart_df,
+        x=x if orientation == "v" else y,
+        y=y if orientation == "v" else x,
+        orientation=orientation,
+        text_auto=".2f",
+        title=title,
     )
 
     fig.update_layout(
-        height=height,
-        margin=dict(l=8, r=8, t=8, b=8),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
+        height=320,
+        margin=dict(l=10, r=10, t=50, b=10),
         showlegend=False,
     )
 
-    fig.update_xaxes(showgrid=False, showticklabels=False, title=None, zeroline=False)
-    fig.update_yaxes(showgrid=False, showticklabels=False, title=None, zeroline=False)
+    if orientation == "v":
+        fig.update_yaxes(range=[1, 5])
+    else:
+        fig.update_xaxes(range=[1, 5])
 
     return fig
 
-def pie_chart(seed: int, height: int = 220):
-    values = make_pie_values(seed)
 
-    fig = go.Figure(
-        data=[
-            go.Pie(
-                values=values,
-                hole=0,
-                sort=False,
-                textinfo="none",
-                marker=dict(
-                    colors=["#bdbdbd", "#efefef"],
-                    line=dict(color="#4a4a4a", width=1.1),
-                ),
-            )
-        ]
+def make_item_mean_chart(df, cols, title):
+    rows = []
+    for col in cols:
+        num = to_numeric_series(df[col])
+        rows.append({
+            "Frage": shorten_question(col),
+            "Mittelwert": num.mean(),
+        })
+
+    chart_df = pd.DataFrame(rows).dropna()
+    if chart_df.empty:
+        return None
+
+    fig = px.bar(
+        chart_df,
+        x="Mittelwert",
+        y="Frage",
+        orientation="h",
+        text_auto=".2f",
+        title=title,
     )
 
     fig.update_layout(
-        height=height,
-        margin=dict(l=8, r=8, t=8, b=8),
-        paper_bgcolor="white",
-        showlegend=False,
+        height=360,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    fig.update_xaxes(range=[1, 5])
+
+    return fig
+
+
+def make_distribution_chart(df, score_col, title):
+    temp = df[[score_col]].dropna().copy()
+    if temp.empty:
+        return None
+
+    temp["Bewertung"] = temp[score_col].round().clip(1, 5).astype(int).astype(str)
+    chart_df = temp["Bewertung"].value_counts().sort_index().reset_index()
+    chart_df.columns = ["Bewertung", "Anzahl"]
+
+    fig = px.bar(chart_df, x="Bewertung", y="Anzahl", text_auto=True, title=title)
+    fig.update_layout(
+        height=320,
+        margin=dict(l=10, r=10, t=50, b=10),
     )
 
     return fig
 
-# ---------------------------------------------------
-# DEMO EXPORT
-# ---------------------------------------------------
-def get_export_data():
-    return pd.DataFrame(
-        {
-            "department": ["Informatik", "Wirtschaftsinformatik", "Data Science"],
-            "score": [72, 68, 75],
-            "responses": [45, 38, 41],
-        }
+
+def make_response_count_chart(df, group_col, title):
+    if not group_col:
+        return None
+
+    temp = df[[group_col]].dropna()
+    if temp.empty:
+        return None
+
+    chart_df = temp[group_col].value_counts().reset_index()
+    chart_df.columns = [group_col, "Anzahl"]
+    chart_df = chart_df.sort_values("Anzahl", ascending=True)
+
+    fig = px.bar(
+        chart_df,
+        x="Anzahl",
+        y=group_col,
+        orientation="h",
+        text_auto=True,
+        title=title,
     )
 
+    fig.update_layout(
+        height=320,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    return fig
+
+
+def extract_keywords(df, text_columns, top_n=12):
+    texts = []
+    for col in text_columns:
+        if col in df.columns:
+            texts.extend(df[col].dropna().astype(str).tolist())
+
+    tokens = []
+    for text in texts:
+        cleaned = re.sub(r"[^a-zA-ZäöüÄÖÜß\s-]", " ", text.lower())
+        cleaned = cleaned.replace("-", " ")
+        parts = cleaned.split()
+
+        for token in parts:
+            if len(token) >= 4 and token not in STOPWORDS_DE:
+                tokens.append(token)
+
+    counts = Counter(tokens).most_common(top_n)
+    if not counts:
+        return None
+
+    chart_df = pd.DataFrame(counts, columns=["Wort", "Anzahl"]).sort_values("Anzahl", ascending=True)
+
+    fig = px.bar(
+        chart_df,
+        x="Anzahl",
+        y="Wort",
+        orientation="h",
+        text_auto=True,
+        title="Häufige Begriffe aus Freitexten",
+    )
+
+    fig.update_layout(
+        height=360,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    return fig
+
+
+def render_plot(fig):
+    if fig is not None:
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
 # ---------------------------------------------------
-# SIDEBAR
+# LOAD
+# ---------------------------------------------------
+uploaded_file = st.sidebar.file_uploader("Excel-Datei", type=["xlsx"])
+raw_df, ignored_columns = load_data(uploaded_file)
+
+if raw_df is None:
+    st.warning("Lege die Excel-Datei in den App-Ordner oder lade sie links im Sidebar hoch.")
+    st.stop()
+
+df, groups = add_score_columns(raw_df)
+
+# ---------------------------------------------------
+# COLUMN MAPPING
+# ---------------------------------------------------
+timestamp_col = find_column(df, "timestamp")
+migration_col = find_column(df, "migrationshintergrund")
+age_col = find_column(df, "wie alt sind sie")
+gender_col = find_column(df, "wie identifizieren sie sich geschlechtlich")
+year_col = find_column(df, "in welchem jahr haben sie ihr studium abgeschlossen")
+work_col = find_column(df, "arbeiten sie neben dem studium")
+program_col = find_column(df, "welchen studiengang studieren sie")
+
+free_text_cols = [
+    find_column(df, "was hat ihnen bisher geholfen, sich im studium zugehörig zu fühlen"),
+    find_column(df, "wann oder in welchen situationen fühlen sie sich nicht zugehörig"),
+    find_column(df, "was wünschen sie, um sich an der hochschule wohler und integrierter zu fühlen"),
+]
+free_text_cols = [c for c in free_text_cols if c]
+
+if timestamp_col:
+    df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
+
+# ---------------------------------------------------
+# FILTERS
 # ---------------------------------------------------
 with st.sidebar:
-    st.markdown("### HSLU Sense of Belonging")
+    st.markdown("### Filter")
 
-    col_y1, col_y2 = st.columns(2)
-    with col_y1:
-        year_from = st.text_input("Jahr von", placeholder="YYYY")
-    with col_y2:
-        year_to = st.text_input("Jahr bis", placeholder="YYYY")
+    filter_map = {}
 
-    department = st.selectbox(
-        "Department",
-        ["Select...", "Informatik", "Wirtschaftsinformatik", "Data Science"],
-    )
+    for label, col in [
+        ("Studiengang", program_col),
+        ("Geschlecht", gender_col),
+        ("Alter", age_col),
+        ("Migrationshintergrund", migration_col),
+        ("Abschlussjahr", year_col),
+        ("Nebenjob", work_col),
+    ]:
+        if col:
+            options = sorted([x for x in df[col].dropna().unique().tolist()])
+            selected = st.multiselect(label, options)
+            filter_map[col] = selected
 
-    gender = st.selectbox(
-        "Gender",
-        ["Select...", "Male", "Female", "Other"],
-    )
+filtered_df = filter_dataframe(df, filter_map)
 
-    age = st.selectbox(
-        "Alter",
-        ["Select...", "18-22", "23-27", "28+"],
-    )
-
-    migration = st.selectbox(
-        "Migrationshintergrund",
-        ["Select...", "Ja", "Nein", "Keine Angabe"],
-    )
-
-    st.button("Reset")
+if filtered_df.empty:
+    st.error("Mit diesen Filtern gibt es keine Daten.")
+    st.stop()
 
 # ---------------------------------------------------
-# HEADER + EXPORT
+# SUMMARY
 # ---------------------------------------------------
-export_df = get_export_data()
-csv_buffer = StringIO()
-export_df.to_csv(csv_buffer, index=False)
+mean_scores = {
+    "Allgemein": filtered_df["score_allgemein"].mean(),
+    "Sozial": filtered_df["score_sozial"].mean(),
+    "Akademisch": filtered_df["score_akademisch"].mean(),
+    "Vielfalt": filtered_df["score_vielfalt"].mean(),
+}
 
-top_left, top_right = st.columns([12, 1.2])
+best_dimension = max(mean_scores, key=mean_scores.get)
+weakest_dimension = min(mean_scores, key=mean_scores.get)
 
-with top_left:
-    st.markdown("<div class='dashboard-title'>Dashboard</div>", unsafe_allow_html=True)
-
-with top_right:
-    st.download_button(
-        label="Export",
-        data=csv_buffer.getvalue(),
-        file_name="sense_of_belonging_export.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-
-# ---------------------------------------------------
-# TABS
-# ---------------------------------------------------
-tabs = st.tabs(
-    [
-        "Overview",
-        "Department",
-        "Gender",
-        "Alter",
-        "Migrationshintergrund",
-    ]
+st.title("HSLU Sense of Belonging")
+st.markdown(
+    f"<div class='small-note'>Datenquelle: Excel. Fragen aus deinen Screenshots werden automatisch ignoriert. Ausgeschlossen: {len(ignored_columns)} Spalten.</div>",
+    unsafe_allow_html=True,
 )
 
+tabs = st.tabs(["Overview", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
+
 # ---------------------------------------------------
-# TAB 1
+# OVERVIEW
 # ---------------------------------------------------
 with tabs[0]:
-    metric_cols = st.columns(5)
-    metrics = [
-        ("Antworten", "124"),
-        ("Present Score", "72%"),
-        ("Zuordnung", "89%"),
-        ("Studentische Daten", "4 Gruppen"),
-        ("Status", "Aktiv"),
-    ]
+    m1, m2, m3, m4, m5 = st.columns(5)
 
-    for col, (label, value) in zip(metric_cols, metrics):
-        with col:
-            st.metric(label, value)
+    m1.metric("Antworten", len(filtered_df))
+    m2.metric("Ø Gesamt", f"{filtered_df['score_overall'].mean():.2f} / 5")
+    m3.metric("Stärkste Dimension", best_dimension)
+    m4.metric("Schwächste Dimension", weakest_dimension)
 
-    row1 = st.columns([2.2, 1.1, 2.2, 1.1])
+    if timestamp_col and filtered_df[timestamp_col].notna().any():
+        latest = filtered_df[timestamp_col].max().strftime("%d.%m.%Y")
+        m5.metric("Letzte Antwort", latest)
+    else:
+        m5.metric("Studiengänge", filtered_df[program_col].nunique() if program_col else 0)
 
-    with row1[0]:
-        st.markdown("<div class='section-title'>Allgemein</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>Overview</div>", unsafe_allow_html=True)
-        st.plotly_chart(bar_chart(1), use_container_width=True, config={"displayModeBar": False})
+    c1, c2, c3 = st.columns(3)
 
-    with row1[1]:
-        st.markdown("<div class='section-title'>Verteilung</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>select...</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(2), use_container_width=True, config={"displayModeBar": False})
+    with c1:
+        score_df = pd.DataFrame({
+            "Dimension": list(mean_scores.keys()),
+            "Mittelwert": list(mean_scores.values()),
+        })
+        fig = px.bar(score_df, x="Dimension", y="Mittelwert", text_auto=".2f", title="Durchschnitt pro Dimension")
+        fig.update_yaxes(range=[1, 5])
+        fig.update_layout(height=320, margin=dict(l=10, r=10, t=50, b=10))
+        render_plot(fig)
 
-    with row1[2]:
-        st.markdown("<div class='section-title'>Akademisch</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>Overview</div>", unsafe_allow_html=True)
-        st.plotly_chart(bar_chart(3), use_container_width=True, config={"displayModeBar": False})
+    with c2:
+        render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
 
-    with row1[3]:
-        st.markdown("<div class='section-title'>Verteilung</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>select...</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(4), use_container_width=True, config={"displayModeBar": False})
+    with c3:
+        render_plot(make_response_count_chart(filtered_df, program_col, "Antworten nach Studiengang"))
 
-    row2 = st.columns([2.2, 1.1, 2.2, 1.1])
+    c4, c5, c6 = st.columns(3)
 
-    with row2[0]:
-        st.markdown("<div class='section-title'>Sozial</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>Scores</div>", unsafe_allow_html=True)
-        st.plotly_chart(bar_chart(5), use_container_width=True, config={"displayModeBar": False})
+    with c4:
+        render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Ø Gesamt nach Geschlecht"))
 
-    with row2[1]:
-        st.markdown("<div class='section-title'>Verteilung</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>select...</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(6), use_container_width=True, config={"displayModeBar": False})
+    with c5:
+        render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Ø Gesamt nach Alter"))
 
-    with row2[2]:
-        st.markdown("<div class='section-title'>Wohlbefinden</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>Scores</div>", unsafe_allow_html=True)
-        st.plotly_chart(bar_chart(7), use_container_width=True, config={"displayModeBar": False})
+    with c6:
+        group_for_chart = migration_col if migration_col else work_col
+        title = "Ø Gesamt nach Migrationshintergrund" if migration_col else "Ø Gesamt nach Nebenjob"
+        render_plot(make_mean_bar(filtered_df, group_for_chart, "score_overall", title))
 
-    with row2[3]:
-        st.markdown("<div class='section-title'>Verteilung</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>select...</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(8), use_container_width=True, config={"displayModeBar": False})
+    bottom_left, bottom_right = st.columns([1.4, 1])
 
-    row3 = st.columns([2.2, 1.1, 1.1, 1.1, 1.1])
+    with bottom_left:
+        render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Ø Gesamt nach Studiengang", orientation="h"))
 
-    with row3[0]:
-        st.markdown("<div class='section-title'>Weitere Kategorie</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>Scores</div>", unsafe_allow_html=True)
-        st.plotly_chart(bar_chart(9), use_container_width=True, config={"displayModeBar": False})
+    with bottom_right:
+        keyword_fig = extract_keywords(filtered_df, free_text_cols)
+        if keyword_fig:
+            render_plot(keyword_fig)
+        else:
+            st.info("Keine Freitextdaten für die Keyword-Auswertung gefunden.")
 
-    with row3[1]:
-        st.markdown("<div class='section-title'>Verteilung</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small-label'>select...</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(10), use_container_width=True, config={"displayModeBar": False})
-
-    with row3[2]:
-        st.markdown("<div class='section-title'>Open Answers</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(11), use_container_width=True, config={"displayModeBar": False})
-
-    with row3[3]:
-        st.markdown("<div class='section-title'>Open Answers</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(12), use_container_width=True, config={"displayModeBar": False})
-
-    with row3[4]:
-        st.markdown("<div class='section-title'>Open Answers</div>", unsafe_allow_html=True)
-        st.plotly_chart(pie_chart(13), use_container_width=True, config={"displayModeBar": False})
 
 # ---------------------------------------------------
 # DETAIL TABS
-# 4 REIHEN × 5 CHARTS
 # ---------------------------------------------------
-def render_detail_tab(title: str, seed_base: int):
-    st.markdown(f"<div class='dashboard-title'>{title}</div>", unsafe_allow_html=True)
+def render_detail_tab(tab_name, score_col, question_cols):
+    top_left, top_right = st.columns([1.2, 1])
 
-    row_titles = [
-        "Department",
-        "Gender",
-        "Alter",
-        "Migrationshintergrund",
+    with top_left:
+        render_plot(make_item_mean_chart(filtered_df, question_cols, f"{tab_name}: Mittelwert pro Frage"))
+
+    with top_right:
+        render_plot(make_distribution_chart(filtered_df, score_col, f"{tab_name}: Verteilung"))
+
+    row2 = st.columns(3)
+    detail_groups = [
+        (program_col, f"{tab_name} nach Studiengang"),
+        (gender_col, f"{tab_name} nach Geschlecht"),
+        (age_col, f"{tab_name} nach Alter"),
     ]
 
-    for row_index, row_title in enumerate(row_titles):
-        st.markdown(f"<div class='section-title'>{row_title}</div>", unsafe_allow_html=True)
-        cols = st.columns(5)
+    for col_ui, (group_col, title) in zip(row2, detail_groups):
+        with col_ui:
+            render_plot(make_mean_bar(filtered_df, group_col, score_col, title))
 
-        for col_index, col in enumerate(cols):
-            with col:
-                seed = seed_base + row_index * 10 + col_index
-                st.plotly_chart(
-                    bar_chart(seed, height=190),
-                    use_container_width=True,
-                    config={"displayModeBar": False},
-                )
+    row3 = st.columns(2)
+    extra_groups = [
+        (migration_col, f"{tab_name} nach Migrationshintergrund"),
+        (work_col, f"{tab_name} nach Nebenjob"),
+    ]
+
+    for col_ui, (group_col, title) in zip(row3, extra_groups):
+        with col_ui:
+            render_plot(make_mean_bar(
+                filtered_df,
+                group_col,
+                score_col,
+                title,
+                orientation="h" if group_col == work_col else "v"
+            ))
+
 
 with tabs[1]:
-    render_detail_tab("Department", 100)
+    render_detail_tab("Allgemein", "score_allgemein", groups["Allgemein"])
 
 with tabs[2]:
-    render_detail_tab("Gender", 200)
+    render_detail_tab("Sozial", "score_sozial", groups["Sozial"])
 
 with tabs[3]:
-    render_detail_tab("Alter", 300)
+    render_detail_tab("Akademisch", "score_akademisch", groups["Akademisch"])
 
 with tabs[4]:
-    render_detail_tab("Migrationshintergrund", 400)
+    render_detail_tab("Vielfalt", "score_vielfalt", groups["Vielfalt"])
