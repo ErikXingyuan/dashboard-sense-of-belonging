@@ -9,9 +9,7 @@ import streamlit as st
 
 st.set_page_config(page_title="HSLU Sense of Belonging", layout="wide")
 
-# ---------------------------------------------------
 # STYLE
-# ---------------------------------------------------
 st.markdown(
     """
     <style>
@@ -78,9 +76,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------
 # CONFIG
-# ---------------------------------------------------
 DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
 
 SCREENSHOT_IGNORE_KEYWORDS = [
@@ -108,9 +104,7 @@ STOPWORDS_DE = {
     "haben", "hilft", "fühle", "fühlen", "zugehörig", "wohler", "integrierter"
 }
 
-# ---------------------------------------------------
 # HELPERS
-# ---------------------------------------------------
 def normalize(text):
     text = str(text or "").strip().lower()
     text = re.sub(r"\s+", " ", text)
@@ -395,9 +389,7 @@ def render_plot(fig):
     else:
         st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
 
-# ---------------------------------------------------
 # LOAD
-# ---------------------------------------------------
 raw_df, ignored_columns = load_data()
 
 if raw_df is None:
@@ -409,9 +401,7 @@ if raw_df is None:
 
 df, groups = add_score_columns(raw_df)
 
-# ---------------------------------------------------
 # COLUMN MAPPING
-# ---------------------------------------------------
 timestamp_col = find_column(df, "timestamp")
 migration_col = find_column(df, "migrationshintergrund")
 age_col = find_column(df, "wie alt sind sie")
@@ -433,9 +423,7 @@ if timestamp_col:
 else:
     df["Antwortjahr"] = np.nan
 
-# ---------------------------------------------------
 # SIDEBAR
-# ---------------------------------------------------
 year_from = None
 year_to = None
 
@@ -485,9 +473,7 @@ if filtered_df.empty:
     st.error("Mit diesen Filtern gibt es keine Daten.")
     st.stop()
 
-# ---------------------------------------------------
 # SUMMARY
-# ---------------------------------------------------
 mean_scores = {
     "Allgemein": filtered_df["score_allgemein"].mean(),
     "Sozial": filtered_df["score_sozial"].mean(),
@@ -499,9 +485,7 @@ valid_mean_scores = {k: v for k, v in mean_scores.items() if pd.notna(v)}
 best_dimension = max(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 weakest_dimension = min(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 
-# ---------------------------------------------------
 # MAIN
-# ---------------------------------------------------
 st.markdown(
     "<div class='main-note'><strong>Hinweis:</strong> 5 = beste Bewertung, 1 = schlechteste Bewertung.</div>",
     unsafe_allow_html=True,
@@ -509,9 +493,7 @@ st.markdown(
 
 tabs = st.tabs(["Overview", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
 
-# ---------------------------------------------------
 # OVERVIEW
-# ---------------------------------------------------
 with tabs[0]:
     m1, m2, m3, m4, m5 = st.columns(5)
 
@@ -578,9 +560,7 @@ with tabs[0]:
         else:
             st.info("Keine Freitextdaten für die Keyword-Auswertung gefunden.")
 
-# ---------------------------------------------------
 # DETAIL TABS
-# ---------------------------------------------------
 def render_detail_tab(tab_name, score_col, question_cols):
     top_left, top_right = st.columns([1.2, 1])
 
