@@ -26,16 +26,40 @@ st.markdown(
             border-right: 1px solid #d9d9d9;
         }
 
+        [data-testid="stSidebar"] .block-container {
+            padding-top: 1.2rem;
+        }
+
+        .sidebar-title {
+            font-size: 1.55rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 1.2rem;
+            color: #1f1f1f;
+        }
+
+        .main-note {
+            color: #555555;
+            font-size: 0.95rem;
+            margin-top: -0.2rem;
+            margin-bottom: 0.9rem;
+        }
+
         [data-baseweb="tab-list"] {
+            display: grid !important;
+            grid-template-columns: repeat(5, 1fr);
             gap: 10px;
+            width: 100%;
             margin-bottom: 1rem;
         }
 
         [data-baseweb="tab"] {
+            width: 100% !important;
+            justify-content: center !important;
             background: #3a3a3a;
             color: white;
             border-radius: 0;
-            padding: 0.45rem 1.2rem;
+            padding: 0.55rem 1rem;
             min-height: 42px;
             border: none;
         }
@@ -49,13 +73,6 @@ st.markdown(
             background: #111111 !important;
             color: white !important;
         }
-
-        .small-note {
-            color: #666666;
-            font-size: 0.88rem;
-            margin-top: -0.2rem;
-            margin-bottom: 0.75rem;
-        }
     </style>
     """,
     unsafe_allow_html=True,
@@ -66,7 +83,6 @@ st.markdown(
 # ---------------------------------------------------
 DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
 
-# Fragen aus deinen Screenshots ignorieren
 SCREENSHOT_IGNORE_KEYWORDS = [
     "erste person in ihrer familie",
     "wichtige gründe für ihr studium",
@@ -141,14 +157,11 @@ def shorten_question(text):
 
 
 @st.cache_data
-def load_data(uploaded_file):
-    if uploaded_file is not None:
-        raw = pd.read_excel(uploaded_file)
-    elif os.path.exists(DEFAULT_FILE):
-        raw = pd.read_excel(DEFAULT_FILE)
-    else:
+def load_data():
+    if not os.path.exists(DEFAULT_FILE):
         return None, None
 
+    raw = pd.read_excel(DEFAULT_FILE)
     raw.columns = [str(c).strip() for c in raw.columns]
 
     for col in raw.columns:
@@ -213,7 +226,6 @@ def add_score_columns(df):
         df[f"score_{group_name.lower()}"] = df[numeric_cols].mean(axis=1) if numeric_cols else np.nan
 
     df["score_overall"] = df[all_score_cols].mean(axis=1) if all_score_cols else np.nan
-
     return df, groups
 
 
@@ -308,7 +320,6 @@ def make_distribution_chart(df, score_col, title):
         height=320,
         margin=dict(l=10, r=10, t=50, b=10),
     )
-
     return fig
 
 
@@ -337,7 +348,6 @@ def make_response_count_chart(df, group_col, title):
         height=320,
         margin=dict(l=10, r=10, t=50, b=10),
     )
-
     return fig
 
 
@@ -376,7 +386,6 @@ def extract_keywords(df, text_columns, top_n=12):
         height=360,
         margin=dict(l=10, r=10, t=50, b=10),
     )
-
     return fig
 
 
@@ -386,17 +395,16 @@ def render_plot(fig):
     else:
         st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
 
-
 # ---------------------------------------------------
 # LOAD
 # ---------------------------------------------------
-with st.sidebar:
-    uploaded_file = st.file_uploader("Excel-Datei", type=["xlsx"])
-
-raw_df, ignored_columns = load_data(uploaded_file)
+raw_df, ignored_columns = load_data()
 
 if raw_df is None:
-    st.warning("Lege die Excel-Datei in den App-Ordner oder lade sie links im Sidebar hoch.")
+    st.error(
+        f"Datei nicht gefunden: {DEFAULT_FILE}. "
+        "Lege die Excel-Datei in denselben Ordner wie die App."
+    )
     st.stop()
 
 df, groups = add_score_columns(raw_df)
@@ -426,12 +434,13 @@ else:
     df["Antwortjahr"] = np.nan
 
 # ---------------------------------------------------
-# FILTERS
+# SIDEBAR
 # ---------------------------------------------------
 year_from = None
 year_to = None
 
 with st.sidebar:
+    st.markdown("<div class='sidebar-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
     st.markdown("### Filter")
 
     filter_map = {}
@@ -443,18 +452,10 @@ with st.sidebar:
         col1, col2 = st.columns(2)
 
         with col1:
-            year_from = st.selectbox(
-                "Jahr von",
-                available_years,
-                index=0,
-            )
+            year_from = st.selectbox("Jahr von", available_years, index=0)
 
         with col2:
-            year_to = st.selectbox(
-                "Jahr bis",
-                available_years,
-                index=len(available_years) - 1,
-            )
+            year_to = st.selectbox("Jahr bis", available_years, index=len(available_years) - 1)
 
     for label, col in [
         ("Studiengang", program_col),
@@ -495,13 +496,14 @@ mean_scores = {
 }
 
 valid_mean_scores = {k: v for k, v in mean_scores.items() if pd.notna(v)}
-
 best_dimension = max(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 weakest_dimension = min(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 
-st.title("HSLU Sense of Belonging")
+# ---------------------------------------------------
+# MAIN
+# ---------------------------------------------------
 st.markdown(
-    f"<div class='small-note'>Datenquelle: Excel. Fragen aus deinen Screenshots werden automatisch ignoriert. Ausgeschlossen: {len(ignored_columns)} Spalten.</div>",
+    "<div class='main-note'><strong>Hinweis:</strong> 5 = beste Bewertung, 1 = schlechteste Bewertung.</div>",
     unsafe_allow_html=True,
 )
 
@@ -616,7 +618,6 @@ def render_detail_tab(tab_name, score_col, question_cols):
                     orientation="h" if group_col == work_col else "v"
                 )
             )
-
 
 with tabs[1]:
     render_detail_tab("Allgemein", "score_allgemein", groups["Allgemein"])
