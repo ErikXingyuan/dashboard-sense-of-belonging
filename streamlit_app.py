@@ -66,7 +66,7 @@ st.markdown(
 # ---------------------------------------------------
 DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
 
-# Diese Fragen aus den Screenshots werden ignoriert
+# Fragen aus deinen Screenshots ignorieren
 SCREENSHOT_IGNORE_KEYWORDS = [
     "erste person in ihrer familie",
     "wichtige gründe für ihr studium",
@@ -210,9 +210,9 @@ def add_score_columns(df):
             numeric_cols.append(num_col)
             all_score_cols.append(num_col)
 
-        df[f"score_{group_name.lower()}"] = df[numeric_cols].mean(axis=1)
+        df[f"score_{group_name.lower()}"] = df[numeric_cols].mean(axis=1) if numeric_cols else np.nan
 
-    df["score_overall"] = df[all_score_cols].mean(axis=1)
+    df["score_overall"] = df[all_score_cols].mean(axis=1) if all_score_cols else np.nan
 
     return df, groups
 
@@ -383,12 +383,16 @@ def extract_keywords(df, text_columns, top_n=12):
 def render_plot(fig):
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    else:
+        st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
 
 
 # ---------------------------------------------------
 # LOAD
 # ---------------------------------------------------
-uploaded_file = st.sidebar.file_uploader("Excel-Datei", type=["xlsx"])
+with st.sidebar:
+    uploaded_file = st.file_uploader("Excel-Datei", type=["xlsx"])
+
 raw_df, ignored_columns = load_data(uploaded_file)
 
 if raw_df is None:
@@ -417,14 +421,40 @@ free_text_cols = [c for c in free_text_cols if c]
 
 if timestamp_col:
     df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
+    df["Antwortjahr"] = df[timestamp_col].dt.year
+else:
+    df["Antwortjahr"] = np.nan
 
 # ---------------------------------------------------
 # FILTERS
 # ---------------------------------------------------
+year_from = None
+year_to = None
+
 with st.sidebar:
     st.markdown("### Filter")
 
     filter_map = {}
+
+    if "Antwortjahr" in df.columns and df["Antwortjahr"].notna().any():
+        available_years = sorted(df["Antwortjahr"].dropna().astype(int).unique().tolist())
+
+        st.markdown("#### Antwortjahr")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            year_from = st.selectbox(
+                "Jahr von",
+                available_years,
+                index=0,
+            )
+
+        with col2:
+            year_to = st.selectbox(
+                "Jahr bis",
+                available_years,
+                index=len(available_years) - 1,
+            )
 
     for label, col in [
         ("Studiengang", program_col),
@@ -441,6 +471,15 @@ with st.sidebar:
 
 filtered_df = filter_dataframe(df, filter_map)
 
+if year_from is not None and year_to is not None:
+    if year_from <= year_to:
+        filtered_df = filtered_df[
+            filtered_df["Antwortjahr"].between(year_from, year_to, inclusive="both")
+        ]
+    else:
+        st.sidebar.warning("Jahr von muss kleiner oder gleich Jahr bis sein.")
+        filtered_df = filtered_df.iloc[0:0]
+
 if filtered_df.empty:
     st.error("Mit diesen Filtern gibt es keine Daten.")
     st.stop()
@@ -455,8 +494,10 @@ mean_scores = {
     "Vielfalt": filtered_df["score_vielfalt"].mean(),
 }
 
-best_dimension = max(mean_scores, key=mean_scores.get)
-weakest_dimension = min(mean_scores, key=mean_scores.get)
+valid_mean_scores = {k: v for k, v in mean_scores.items() if pd.notna(v)}
+
+best_dimension = max(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
+weakest_dimension = min(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 
 st.title("HSLU Sense of Belonging")
 st.markdown(
@@ -473,11 +514,16 @@ with tabs[0]:
     m1, m2, m3, m4, m5 = st.columns(5)
 
     m1.metric("Antworten", len(filtered_df))
-    m2.metric("Ø Gesamt", f"{filtered_df['score_overall'].mean():.2f} / 5")
+
+    overall_mean = filtered_df["score_overall"].mean()
+    m2.metric("Ø Gesamt", f"{overall_mean:.2f} / 5" if pd.notna(overall_mean) else "-")
+
     m3.metric("Stärkste Dimension", best_dimension)
     m4.metric("Schwächste Dimension", weakest_dimension)
 
-    if timestamp_col and filtered_df[timestamp_col].notna().any():
+    if year_from is not None and year_to is not None:
+        m5.metric("Antwortjahr", f"{year_from} - {year_to}")
+    elif timestamp_col and filtered_df[timestamp_col].notna().any():
         latest = filtered_df[timestamp_col].max().strftime("%d.%m.%Y")
         m5.metric("Letzte Antwort", latest)
     else:
@@ -489,11 +535,15 @@ with tabs[0]:
         score_df = pd.DataFrame({
             "Dimension": list(mean_scores.keys()),
             "Mittelwert": list(mean_scores.values()),
-        })
-        fig = px.bar(score_df, x="Dimension", y="Mittelwert", text_auto=".2f", title="Durchschnitt pro Dimension")
-        fig.update_yaxes(range=[1, 5])
-        fig.update_layout(height=320, margin=dict(l=10, r=10, t=50, b=10))
-        render_plot(fig)
+        }).dropna()
+
+        if not score_df.empty:
+            fig = px.bar(score_df, x="Dimension", y="Mittelwert", text_auto=".2f", title="Durchschnitt pro Dimension")
+            fig.update_yaxes(range=[1, 5])
+            fig.update_layout(height=320, margin=dict(l=10, r=10, t=50, b=10))
+            render_plot(fig)
+        else:
+            st.info("Keine Score-Daten vorhanden.")
 
     with c2:
         render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
@@ -526,7 +576,6 @@ with tabs[0]:
         else:
             st.info("Keine Freitextdaten für die Keyword-Auswertung gefunden.")
 
-
 # ---------------------------------------------------
 # DETAIL TABS
 # ---------------------------------------------------
@@ -558,13 +607,15 @@ def render_detail_tab(tab_name, score_col, question_cols):
 
     for col_ui, (group_col, title) in zip(row3, extra_groups):
         with col_ui:
-            render_plot(make_mean_bar(
-                filtered_df,
-                group_col,
-                score_col,
-                title,
-                orientation="h" if group_col == work_col else "v"
-            ))
+            render_plot(
+                make_mean_bar(
+                    filtered_df,
+                    group_col,
+                    score_col,
+                    title,
+                    orientation="h" if group_col == work_col else "v"
+                )
+            )
 
 
 with tabs[1]:
