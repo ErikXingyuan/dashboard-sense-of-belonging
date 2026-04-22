@@ -88,7 +88,23 @@ st.markdown(
             margin-bottom: 0.7rem;
         }
 
+        div[data-testid="stVerticalBlock"]:has(.gray-box-marker) {
+            background: #f1f1f1;
+            border: 1px solid #dddddd;
+            border-radius: 12px;
+            padding: 1rem 1rem 0.4rem 1rem;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
 
+        div[data-testid="stVerticalBlock"]:has(.yellow-box-marker) {
+            background: #fff7d6;
+            border: 1px solid #eadb94;
+            border-radius: 12px;
+            padding: 1rem 1rem 0.4rem 1rem;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
 
         .box-title {
             font-size: 1.08rem;
