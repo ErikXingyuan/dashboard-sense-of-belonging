@@ -16,10 +16,10 @@ st.markdown(
     """
     <style>
         .block-container {
-            padding-top: 0.8rem;
-            padding-bottom: 1.5rem;
-            max-width: 100%;
-        }
+        padding-top: 2.6rem;
+        padding-bottom: 1.5rem;
+        max-width: 100%;
+    }
 
         [data-testid="stSidebar"] {
             background-color: #f5f5f5;
