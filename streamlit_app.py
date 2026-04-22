@@ -590,8 +590,8 @@ with tabs[0]:
 
     m1.metric("Antworten", len(filtered_df))
     m2.metric("Ø Gesamt", f"{overall_mean:.2f} / 5" if pd.notna(overall_mean) else "-")
-    m3.metric("Stärkste Dimension", best_dimension)
-    m4.metric("Schwächste Dimension", weakest_dimension)
+    m3.metric("Positivste Dimension", best_dimension)
+    m4.metric("Grösstes Verbesserungspotenzial", weakest_dimension)
 
     if year_from is not None and year_to is not None:
         m5.metric("Antwortjahr", f"{year_from} - {year_to}")
