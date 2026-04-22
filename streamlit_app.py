@@ -626,11 +626,7 @@ with tabs[0]:
         render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
 
     with top3:
-        keyword_fig = extract_keywords(filtered_df, free_text_cols)
-        if keyword_fig:
-            render_plot(keyword_fig)
-        else:
-            st.info("Keine Freitextdaten für die Keyword-Auswertung gefunden.")
+        render_plot(make_count_chart(filtered_df, program_col, "Antworten nach Studiengang", orientation="h"))
 
     avg_box = st.container(border=True)
     with avg_box:
