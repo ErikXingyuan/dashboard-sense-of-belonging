@@ -97,14 +97,6 @@ st.markdown(
             margin-bottom: 1rem;
         }
 
-        div[data-testid="stVerticalBlock"]:has(.yellow-box-marker) {
-            background: #fff7d6;
-            border: 1px solid #eadb94;
-            border-radius: 12px;
-            padding: 1rem 1rem 0.4rem 1rem;
-            margin-top: 1rem;
-            margin-bottom: 1rem;
-        }
 
         .box-title {
             font-size: 1.08rem;
@@ -664,7 +656,7 @@ with tabs[0]:
 
     count_box = st.container()
     with count_box:
-        st.markdown("<div class='yellow-box-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div ></div>", unsafe_allow_html=True)
         st.markdown("<div class='box-title'>Personenzahl nach demografischen Daten</div>", unsafe_allow_html=True)
 
         row1 = st.columns(3)
