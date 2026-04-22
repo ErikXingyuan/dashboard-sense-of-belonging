@@ -82,26 +82,23 @@ st.markdown(
             margin-bottom: 1rem;
         }
 
-        .section-label {
-            font-size: 1.05rem;
-            font-weight: 700;
-            margin-bottom: 0.7rem;
-        }
-
-        div[data-testid="stVerticalBlock"]:has(.gray-box-marker) {
-            background: #f1f1f1;
-            border: 1px solid #dddddd;
-            border-radius: 12px;
-            padding: 1rem 1rem 0.4rem 1rem;
-            margin-top: 1rem;
-            margin-bottom: 1rem;
-        }
-
-
         .box-title {
             font-size: 1.08rem;
             font-weight: 700;
             margin-bottom: 0.75rem;
+        }
+
+        .gray-box-marker {
+            display: none;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.gray-box-marker) {
+            background: #f1f1f1;
+            border: 1px solid #dddddd !important;
+            border-radius: 12px;
+            padding: 0.9rem 0.9rem 0.4rem 0.9rem;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
         }
     </style>
     """,
@@ -635,7 +632,7 @@ with tabs[0]:
         else:
             st.info("Keine Freitextdaten für die Keyword-Auswertung gefunden.")
 
-    avg_box = st.container()
+    avg_box = st.container(border=True)
     with avg_box:
         st.markdown("<div class='gray-box-marker'></div>", unsafe_allow_html=True)
         st.markdown("<div class='box-title'>Durchschnitt nach demografischen Daten</div>", unsafe_allow_html=True)
@@ -654,24 +651,24 @@ with tabs[0]:
         with row2[1]:
             render_plot(make_mean_bar(filtered_df, work_col, "score_overall", "Ø Gesamt nach Nebenjob", orientation="h"))
 
-    count_box = st.container()
-with count_box:
-    st.markdown("<div class='gray-box-marker'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='box-title'>Personenzahl nach demografischen Daten</div>", unsafe_allow_html=True)
+    count_box = st.container(border=True)
+    with count_box:
+        st.markdown("<div class='gray-box-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='box-title'>Personenzahl nach demografischen Daten</div>", unsafe_allow_html=True)
 
-    row1 = st.columns(3)
-    with row1[0]:
-        render_plot(make_count_chart(filtered_df, gender_col, "Personenzahl nach Geschlecht"))
-    with row1[1]:
-        render_plot(make_count_chart(filtered_df, age_col, "Personenzahl nach Alter"))
-    with row1[2]:
-        render_plot(make_count_chart(filtered_df, migration_col, "Personenzahl nach Migrationshintergrund"))
+        row1 = st.columns(3)
+        with row1[0]:
+            render_plot(make_count_chart(filtered_df, gender_col, "Personenzahl nach Geschlecht"))
+        with row1[1]:
+            render_plot(make_count_chart(filtered_df, age_col, "Personenzahl nach Alter"))
+        with row1[2]:
+            render_plot(make_count_chart(filtered_df, migration_col, "Personenzahl nach Migrationshintergrund"))
 
-    row2 = st.columns(2)
-    with row2[0]:
-        render_plot(make_count_chart(filtered_df, program_col, "Personenzahl nach Studiengang", orientation="h"))
-    with row2[1]:
-        render_plot(make_count_chart(filtered_df, work_col, "Personenzahl nach Nebenjob", orientation="h"))
+        row2 = st.columns(2)
+        with row2[0]:
+            render_plot(make_count_chart(filtered_df, program_col, "Personenzahl nach Studiengang", orientation="h"))
+        with row2[1]:
+            render_plot(make_count_chart(filtered_df, work_col, "Personenzahl nach Nebenjob", orientation="h"))
 
 # ---------------------------------------------------
 # DETAIL TABS
