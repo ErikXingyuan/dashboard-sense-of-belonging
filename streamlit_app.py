@@ -9,7 +9,9 @@ import streamlit as st
 
 st.set_page_config(page_title="HSLU Sense of Belonging", layout="wide")
 
+# ---------------------------------------------------
 # STYLE
+# ---------------------------------------------------
 st.markdown(
     """
     <style>
@@ -25,22 +27,23 @@ st.markdown(
         }
 
         [data-testid="stSidebar"] .block-container {
-            padding-top: 1.2rem;
+            padding-top: 1.1rem;
         }
 
         .sidebar-title {
-            font-size: 1.55rem;
+            font-size: 1.45rem;
             font-weight: 700;
             line-height: 1.2;
-            margin-bottom: 1.2rem;
+            margin-bottom: 1rem;
             color: #1f1f1f;
         }
 
-        .main-note {
-            color: #555555;
-            font-size: 0.95rem;
-            margin-top: -0.2rem;
-            margin-bottom: 0.9rem;
+        .main-title {
+            font-size: 2.55rem;
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 0.35rem;
+            color: #202020;
         }
 
         [data-baseweb="tab-list"] {
@@ -48,7 +51,7 @@ st.markdown(
             grid-template-columns: repeat(5, 1fr);
             gap: 10px;
             width: 100%;
-            margin-bottom: 1rem;
+            margin-bottom: 0.6rem;
         }
 
         [data-baseweb="tab"] {
@@ -71,12 +74,51 @@ st.markdown(
             background: #111111 !important;
             color: white !important;
         }
+
+        .main-note {
+            color: #555555;
+            font-size: 0.95rem;
+            margin-top: 0.15rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-label {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 0.7rem;
+        }
+
+        div[data-testid="stVerticalBlock"]:has(.gray-box-marker) {
+            background: #f1f1f1;
+            border: 1px solid #dddddd;
+            border-radius: 12px;
+            padding: 1rem 1rem 0.4rem 1rem;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        div[data-testid="stVerticalBlock"]:has(.yellow-box-marker) {
+            background: #fff7d6;
+            border: 1px solid #eadb94;
+            border-radius: 12px;
+            padding: 1rem 1rem 0.4rem 1rem;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .box-title {
+            font-size: 1.08rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+        }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+# ---------------------------------------------------
 # CONFIG
+# ---------------------------------------------------
 DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
 
 SCREENSHOT_IGNORE_KEYWORDS = [
@@ -104,7 +146,9 @@ STOPWORDS_DE = {
     "haben", "hilft", "fühle", "fühlen", "zugehörig", "wohler", "integrierter"
 }
 
+# ---------------------------------------------------
 # HELPERS
+# ---------------------------------------------------
 def normalize(text):
     text = str(text or "").strip().lower()
     text = re.sub(r"\s+", " ", text)
@@ -150,6 +194,21 @@ def shorten_question(text):
     return text[:72] + "..."
 
 
+def get_filter_options(series):
+    values = series.dropna().astype(str).str.strip()
+    values = values[values != ""]
+    unique_values = sorted(values.unique().tolist(), key=lambda x: str(x).lower())
+    return unique_values
+
+
+def apply_single_filter(df, col, selected_values):
+    if not col or not selected_values:
+        return df
+    series = df[col].astype(str).str.strip()
+    selected_set = {str(v).strip() for v in selected_values}
+    return df[series.isin(selected_set)]
+
+
 @st.cache_data
 def load_data():
     if not os.path.exists(DEFAULT_FILE):
@@ -160,8 +219,7 @@ def load_data():
 
     for col in raw.columns:
         if raw[col].dtype == object:
-            raw[col] = raw[col].astype(str).str.strip()
-            raw[col] = raw[col].replace({"": np.nan, "nan": np.nan, "None": np.nan})
+            raw[col] = raw[col].replace({"": np.nan})
 
     ignored_columns = [col for col in raw.columns if is_ignored_column(col)]
     return raw, ignored_columns
@@ -223,21 +281,15 @@ def add_score_columns(df):
     return df, groups
 
 
-def filter_dataframe(df, filter_map):
-    filtered = df.copy()
-    for col, selected_values in filter_map.items():
-        if col and selected_values:
-            filtered = filtered[filtered[col].isin(selected_values)]
-    return filtered
-
-
-def make_mean_bar(data, x, y, title, orientation="v"):
+def make_mean_bar(data, x, y, title, orientation="v", height=320):
     if x is None or y is None or y not in data.columns:
         return None
 
-    temp = data[[x, y]].dropna()
+    temp = data[[x, y]].dropna().copy()
     if temp.empty:
         return None
+
+    temp[x] = temp[x].astype(str).str.strip()
 
     chart_df = (
         temp.groupby(x, dropna=False)[y]
@@ -256,7 +308,7 @@ def make_mean_bar(data, x, y, title, orientation="v"):
     )
 
     fig.update_layout(
-        height=320,
+        height=height,
         margin=dict(l=10, r=10, t=50, b=10),
         showlegend=False,
     )
@@ -266,6 +318,42 @@ def make_mean_bar(data, x, y, title, orientation="v"):
     else:
         fig.update_xaxes(range=[1, 5])
 
+    return fig
+
+
+def make_count_chart(data, group_col, title, orientation="v", height=320):
+    if not group_col or group_col not in data.columns:
+        return None
+
+    temp = data[[group_col]].dropna().copy()
+    if temp.empty:
+        return None
+
+    temp[group_col] = temp[group_col].astype(str).str.strip()
+    temp = temp[temp[group_col] != ""]
+    if temp.empty:
+        return None
+
+    chart_df = temp[group_col].value_counts().reset_index()
+    chart_df.columns = [group_col, "Anzahl"]
+
+    if orientation == "h":
+        chart_df = chart_df.sort_values("Anzahl", ascending=True)
+
+    fig = px.bar(
+        chart_df,
+        x=group_col if orientation == "v" else "Anzahl",
+        y="Anzahl" if orientation == "v" else group_col,
+        orientation=orientation,
+        text_auto=True,
+        title=title,
+    )
+
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=10, t=50, b=10),
+        showlegend=False,
+    )
     return fig
 
 
@@ -296,7 +384,6 @@ def make_item_mean_chart(df, cols, title):
         margin=dict(l=10, r=10, t=50, b=10),
     )
     fig.update_xaxes(range=[1, 5])
-
     return fig
 
 
@@ -310,34 +397,6 @@ def make_distribution_chart(df, score_col, title):
     chart_df.columns = ["Bewertung", "Anzahl"]
 
     fig = px.bar(chart_df, x="Bewertung", y="Anzahl", text_auto=True, title=title)
-    fig.update_layout(
-        height=320,
-        margin=dict(l=10, r=10, t=50, b=10),
-    )
-    return fig
-
-
-def make_response_count_chart(df, group_col, title):
-    if not group_col:
-        return None
-
-    temp = df[[group_col]].dropna()
-    if temp.empty:
-        return None
-
-    chart_df = temp[group_col].value_counts().reset_index()
-    chart_df.columns = [group_col, "Anzahl"]
-    chart_df = chart_df.sort_values("Anzahl", ascending=True)
-
-    fig = px.bar(
-        chart_df,
-        x="Anzahl",
-        y=group_col,
-        orientation="h",
-        text_auto=True,
-        title=title,
-    )
-
     fig.update_layout(
         height=320,
         margin=dict(l=10, r=10, t=50, b=10),
@@ -389,7 +448,10 @@ def render_plot(fig):
     else:
         st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
 
-# LOAD
+
+# ---------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------
 raw_df, ignored_columns = load_data()
 
 if raw_df is None:
@@ -401,7 +463,9 @@ if raw_df is None:
 
 df, groups = add_score_columns(raw_df)
 
+# ---------------------------------------------------
 # COLUMN MAPPING
+# ---------------------------------------------------
 timestamp_col = find_column(df, "timestamp")
 migration_col = find_column(df, "migrationshintergrund")
 age_col = find_column(df, "wie alt sind sie")
@@ -423,7 +487,9 @@ if timestamp_col:
 else:
     df["Antwortjahr"] = np.nan
 
-# SIDEBAR
+# ---------------------------------------------------
+# SIDEBAR / FILTERS
+# ---------------------------------------------------
 year_from = None
 year_to = None
 
@@ -431,34 +497,60 @@ with st.sidebar:
     st.markdown("<div class='sidebar-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
     st.markdown("### Filter")
 
-    filter_map = {}
-
     if "Antwortjahr" in df.columns and df["Antwortjahr"].notna().any():
         available_years = sorted(df["Antwortjahr"].dropna().astype(int).unique().tolist())
 
         st.markdown("#### Antwortjahr")
-        col1, col2 = st.columns(2)
+        c1, c2 = st.columns(2)
+        with c1:
+            year_from = st.selectbox("Jahr von", available_years, index=0, key="year_from")
+        with c2:
+            year_to = st.selectbox("Jahr bis", available_years, index=len(available_years) - 1, key="year_to")
 
-        with col1:
-            year_from = st.selectbox("Jahr von", available_years, index=0)
+    study_program_selected = st.multiselect(
+        "Studiengang",
+        get_filter_options(df[program_col]) if program_col else [],
+        key="filter_program",
+    ) if program_col else []
 
-        with col2:
-            year_to = st.selectbox("Jahr bis", available_years, index=len(available_years) - 1)
+    gender_selected = st.multiselect(
+        "Geschlecht",
+        get_filter_options(df[gender_col]) if gender_col else [],
+        key="filter_gender",
+    ) if gender_col else []
 
-    for label, col in [
-        ("Studiengang", program_col),
-        ("Geschlecht", gender_col),
-        ("Alter", age_col),
-        ("Migrationshintergrund", migration_col),
-        ("Abschlussjahr", year_col),
-        ("Nebenjob", work_col),
-    ]:
-        if col:
-            options = sorted([x for x in df[col].dropna().unique().tolist()])
-            selected = st.multiselect(label, options)
-            filter_map[col] = selected
+    age_selected = st.multiselect(
+        "Alter",
+        get_filter_options(df[age_col]) if age_col else [],
+        key="filter_age",
+    ) if age_col else []
 
-filtered_df = filter_dataframe(df, filter_map)
+    migration_selected = st.multiselect(
+        "Migrationshintergrund",
+        get_filter_options(df[migration_col]) if migration_col else [],
+        key="filter_migration",
+    ) if migration_col else []
+
+    graduation_year_selected = st.multiselect(
+        "Abschlussjahr",
+        get_filter_options(df[year_col]) if year_col else [],
+        key="filter_gradyear",
+    ) if year_col else []
+
+    work_selected = st.multiselect(
+        "Nebenjob",
+        get_filter_options(df[work_col]) if work_col else [],
+        key="filter_work",
+    ) if work_col else []
+
+filtered_df = df.copy()
+
+filtered_df = apply_single_filter(filtered_df, program_col, study_program_selected)
+filtered_df = apply_single_filter(filtered_df, gender_col, gender_selected)
+filtered_df = apply_single_filter(filtered_df, age_col, age_selected)
+filtered_df = apply_single_filter(filtered_df, migration_col, migration_selected)
+filtered_df = apply_single_filter(filtered_df, year_col, graduation_year_selected)
+filtered_df = apply_single_filter(filtered_df, work_col, work_selected)
 
 if year_from is not None and year_to is not None:
     if year_from <= year_to:
@@ -473,7 +565,9 @@ if filtered_df.empty:
     st.error("Mit diesen Filtern gibt es keine Daten.")
     st.stop()
 
+# ---------------------------------------------------
 # SUMMARY
+# ---------------------------------------------------
 mean_scores = {
     "Allgemein": filtered_df["score_allgemein"].mean(),
     "Sozial": filtered_df["score_sozial"].mean(),
@@ -485,82 +579,111 @@ valid_mean_scores = {k: v for k, v in mean_scores.items() if pd.notna(v)}
 best_dimension = max(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 weakest_dimension = min(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 
+overall_mean = filtered_df["score_overall"].mean()
+
+# ---------------------------------------------------
 # MAIN
+# ---------------------------------------------------
+st.markdown("<div class='main-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
+
+tabs = st.tabs(["Overview", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
+
 st.markdown(
     "<div class='main-note'><strong>Hinweis:</strong> 5 = beste Bewertung, 1 = schlechteste Bewertung.</div>",
     unsafe_allow_html=True,
 )
 
-tabs = st.tabs(["Overview", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
-
+# ---------------------------------------------------
 # OVERVIEW
+# ---------------------------------------------------
 with tabs[0]:
     m1, m2, m3, m4, m5 = st.columns(5)
 
     m1.metric("Antworten", len(filtered_df))
-
-    overall_mean = filtered_df["score_overall"].mean()
     m2.metric("Ø Gesamt", f"{overall_mean:.2f} / 5" if pd.notna(overall_mean) else "-")
-
     m3.metric("Stärkste Dimension", best_dimension)
     m4.metric("Schwächste Dimension", weakest_dimension)
 
     if year_from is not None and year_to is not None:
         m5.metric("Antwortjahr", f"{year_from} - {year_to}")
     elif timestamp_col and filtered_df[timestamp_col].notna().any():
-        latest = filtered_df[timestamp_col].max().strftime("%d.%m.%Y")
-        m5.metric("Letzte Antwort", latest)
+        m5.metric("Letzte Antwort", filtered_df[timestamp_col].max().strftime("%d.%m.%Y"))
     else:
         m5.metric("Studiengänge", filtered_df[program_col].nunique() if program_col else 0)
 
-    c1, c2, c3 = st.columns(3)
+    top1, top2, top3 = st.columns(3)
 
-    with c1:
+    with top1:
         score_df = pd.DataFrame({
             "Dimension": list(mean_scores.keys()),
             "Mittelwert": list(mean_scores.values()),
         }).dropna()
 
         if not score_df.empty:
-            fig = px.bar(score_df, x="Dimension", y="Mittelwert", text_auto=".2f", title="Durchschnitt pro Dimension")
+            fig = px.bar(
+                score_df,
+                x="Dimension",
+                y="Mittelwert",
+                text_auto=".2f",
+                title="Durchschnitt pro Dimension"
+            )
             fig.update_yaxes(range=[1, 5])
             fig.update_layout(height=320, margin=dict(l=10, r=10, t=50, b=10))
             render_plot(fig)
         else:
             st.info("Keine Score-Daten vorhanden.")
 
-    with c2:
+    with top2:
         render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
 
-    with c3:
-        render_plot(make_response_count_chart(filtered_df, program_col, "Antworten nach Studiengang"))
-
-    c4, c5, c6 = st.columns(3)
-
-    with c4:
-        render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Ø Gesamt nach Geschlecht"))
-
-    with c5:
-        render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Ø Gesamt nach Alter"))
-
-    with c6:
-        group_for_chart = migration_col if migration_col else work_col
-        title = "Ø Gesamt nach Migrationshintergrund" if migration_col else "Ø Gesamt nach Nebenjob"
-        render_plot(make_mean_bar(filtered_df, group_for_chart, "score_overall", title))
-
-    bottom_left, bottom_right = st.columns([1.4, 1])
-
-    with bottom_left:
-        render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Ø Gesamt nach Studiengang", orientation="h"))
-
-    with bottom_right:
+    with top3:
         keyword_fig = extract_keywords(filtered_df, free_text_cols)
         if keyword_fig:
             render_plot(keyword_fig)
         else:
             st.info("Keine Freitextdaten für die Keyword-Auswertung gefunden.")
 
+    avg_box = st.container()
+    with avg_box:
+        st.markdown("<div class='gray-box-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='box-title'>Durchschnitt nach demografischen Daten</div>", unsafe_allow_html=True)
+
+        row1 = st.columns(3)
+        with row1[0]:
+            render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Ø Gesamt nach Geschlecht"))
+        with row1[1]:
+            render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Ø Gesamt nach Alter"))
+        with row1[2]:
+            render_plot(make_mean_bar(filtered_df, migration_col, "score_overall", "Ø Gesamt nach Migrationshintergrund"))
+
+        row2 = st.columns(2)
+        with row2[0]:
+            render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Ø Gesamt nach Studiengang", orientation="h"))
+        with row2[1]:
+            render_plot(make_mean_bar(filtered_df, work_col, "score_overall", "Ø Gesamt nach Nebenjob", orientation="h"))
+
+    count_box = st.container()
+    with count_box:
+        st.markdown("<div class='yellow-box-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='box-title'>Personenzahl nach demografischen Daten</div>", unsafe_allow_html=True)
+
+        row1 = st.columns(3)
+        with row1[0]:
+            render_plot(make_count_chart(filtered_df, gender_col, "Personenzahl nach Geschlecht"))
+        with row1[1]:
+            render_plot(make_count_chart(filtered_df, age_col, "Personenzahl nach Alter"))
+        with row1[2]:
+            render_plot(make_count_chart(filtered_df, migration_col, "Personenzahl nach Migrationshintergrund"))
+
+        row2 = st.columns(2)
+        with row2[0]:
+            render_plot(make_count_chart(filtered_df, program_col, "Personenzahl nach Studiengang", orientation="h"))
+        with row2[1]:
+            render_plot(make_count_chart(filtered_df, work_col, "Personenzahl nach Nebenjob", orientation="h"))
+
+# ---------------------------------------------------
 # DETAIL TABS
+# ---------------------------------------------------
 def render_detail_tab(tab_name, score_col, question_cols):
     top_left, top_right = st.columns([1.2, 1])
 
@@ -571,33 +694,18 @@ def render_detail_tab(tab_name, score_col, question_cols):
         render_plot(make_distribution_chart(filtered_df, score_col, f"{tab_name}: Verteilung"))
 
     row2 = st.columns(3)
-    detail_groups = [
-        (program_col, f"{tab_name} nach Studiengang"),
-        (gender_col, f"{tab_name} nach Geschlecht"),
-        (age_col, f"{tab_name} nach Alter"),
-    ]
-
-    for col_ui, (group_col, title) in zip(row2, detail_groups):
-        with col_ui:
-            render_plot(make_mean_bar(filtered_df, group_col, score_col, title))
+    with row2[0]:
+        render_plot(make_mean_bar(filtered_df, program_col, score_col, f"{tab_name} nach Studiengang"))
+    with row2[1]:
+        render_plot(make_mean_bar(filtered_df, gender_col, score_col, f"{tab_name} nach Geschlecht"))
+    with row2[2]:
+        render_plot(make_mean_bar(filtered_df, age_col, score_col, f"{tab_name} nach Alter"))
 
     row3 = st.columns(2)
-    extra_groups = [
-        (migration_col, f"{tab_name} nach Migrationshintergrund"),
-        (work_col, f"{tab_name} nach Nebenjob"),
-    ]
-
-    for col_ui, (group_col, title) in zip(row3, extra_groups):
-        with col_ui:
-            render_plot(
-                make_mean_bar(
-                    filtered_df,
-                    group_col,
-                    score_col,
-                    title,
-                    orientation="h" if group_col == work_col else "v"
-                )
-            )
+    with row3[0]:
+        render_plot(make_mean_bar(filtered_df, migration_col, score_col, f"{tab_name} nach Migrationshintergrund"))
+    with row3[1]:
+        render_plot(make_mean_bar(filtered_df, work_col, score_col, f"{tab_name} nach Nebenjob", orientation="h"))
 
 with tabs[1]:
     render_detail_tab("Allgemein", "score_allgemein", groups["Allgemein"])
