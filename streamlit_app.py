@@ -489,7 +489,6 @@ with st.sidebar:
     if "Antwortjahr" in df.columns and df["Antwortjahr"].notna().any():
         available_years = sorted(df["Antwortjahr"].dropna().astype(int).unique().tolist())
 
-        st.markdown("#### Antwortjahr")
         c1, c2 = st.columns(2)
         with c1:
             year_from = st.selectbox("Jahr von", available_years, index=0, key="year_from")
