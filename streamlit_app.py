@@ -9,17 +9,14 @@ import streamlit as st
 
 st.set_page_config(page_title="HSLU Sense of Belonging", layout="wide")
 
-# ---------------------------------------------------
-# STYLE
-# ---------------------------------------------------
 st.markdown(
     """
     <style>
         .block-container {
-        padding-top: 2.6rem;
-        padding-bottom: 1.5rem;
-        max-width: 100%;
-    }
+            padding-top: 2.6rem;
+            padding-bottom: 1.5rem;
+            max-width: 100%;
+        }
 
         [data-testid="stSidebar"] {
             background-color: #f5f5f5;
@@ -105,9 +102,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------
-# CONFIG
-# ---------------------------------------------------
 DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
 
 SCREENSHOT_IGNORE_KEYWORDS = [
@@ -135,9 +129,7 @@ STOPWORDS_DE = {
     "haben", "hilft", "fühle", "fühlen", "zugehörig", "wohler", "integrierter"
 }
 
-# ---------------------------------------------------
-# HELPERS
-# ---------------------------------------------------
+
 def normalize(text):
     text = str(text or "").strip().lower()
     text = re.sub(r"\s+", " ", text)
@@ -186,8 +178,7 @@ def shorten_question(text):
 def get_filter_options(series):
     values = series.dropna().astype(str).str.strip()
     values = values[values != ""]
-    unique_values = sorted(values.unique().tolist(), key=lambda x: str(x).lower())
-    return unique_values
+    return sorted(values.unique().tolist(), key=lambda x: str(x).lower())
 
 
 def apply_single_filter(df, col, selected_values):
@@ -438,9 +429,6 @@ def render_plot(fig):
         st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
 
 
-# ---------------------------------------------------
-# LOAD DATA
-# ---------------------------------------------------
 raw_df, ignored_columns = load_data()
 
 if raw_df is None:
@@ -452,9 +440,6 @@ if raw_df is None:
 
 df, groups = add_score_columns(raw_df)
 
-# ---------------------------------------------------
-# COLUMN MAPPING
-# ---------------------------------------------------
 timestamp_col = find_column(df, "timestamp")
 migration_col = find_column(df, "migrationshintergrund")
 age_col = find_column(df, "wie alt sind sie")
@@ -476,9 +461,6 @@ if timestamp_col:
 else:
     df["Antwortjahr"] = np.nan
 
-# ---------------------------------------------------
-# SIDEBAR / FILTERS
-# ---------------------------------------------------
 year_from = None
 year_to = None
 
@@ -532,7 +514,6 @@ with st.sidebar:
     ) if work_col else []
 
 filtered_df = df.copy()
-
 filtered_df = apply_single_filter(filtered_df, program_col, study_program_selected)
 filtered_df = apply_single_filter(filtered_df, gender_col, gender_selected)
 filtered_df = apply_single_filter(filtered_df, age_col, age_selected)
@@ -553,9 +534,6 @@ if filtered_df.empty:
     st.error("Mit diesen Filtern gibt es keine Daten.")
     st.stop()
 
-# ---------------------------------------------------
-# SUMMARY
-# ---------------------------------------------------
 mean_scores = {
     "Allgemein": filtered_df["score_allgemein"].mean(),
     "Sozial": filtered_df["score_sozial"].mean(),
@@ -566,12 +544,8 @@ mean_scores = {
 valid_mean_scores = {k: v for k, v in mean_scores.items() if pd.notna(v)}
 best_dimension = max(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
 weakest_dimension = min(valid_mean_scores, key=valid_mean_scores.get) if valid_mean_scores else "-"
-
 overall_mean = filtered_df["score_overall"].mean()
 
-# ---------------------------------------------------
-# MAIN
-# ---------------------------------------------------
 st.markdown("<div class='main-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
 
 tabs = st.tabs(["Übersicht", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
@@ -581,9 +555,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------
-# OVERVIEW
-# ---------------------------------------------------
 with tabs[0]:
     m1, m2, m3, m4, m5 = st.columns(5)
 
@@ -665,9 +636,7 @@ with tabs[0]:
         with row2[1]:
             render_plot(make_count_chart(filtered_df, work_col, "Personenzahl nach Nebenjob", orientation="h"))
 
-# ---------------------------------------------------
-# DETAIL TABS
-# ---------------------------------------------------
+
 def render_detail_tab(tab_name, score_col, question_cols):
     top_left, top_right = st.columns([1.2, 1])
 
@@ -691,6 +660,7 @@ def render_detail_tab(tab_name, score_col, question_cols):
     with row3[1]:
         render_plot(make_mean_bar(filtered_df, work_col, score_col, f"{tab_name} nach Nebenjob", orientation="h"))
 
+
 with tabs[1]:
     render_detail_tab("Allgemein", "score_allgemein", groups["Allgemein"])
 
@@ -702,3 +672,4 @@ with tabs[3]:
 
 with tabs[4]:
     render_detail_tab("Vielfalt", "score_vielfalt", groups["Vielfalt"])
+
