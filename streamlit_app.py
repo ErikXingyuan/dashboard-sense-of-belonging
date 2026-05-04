@@ -18,8 +18,8 @@ st.markdown(
         }
 
         [data-testid="stSidebar"] {
-            background-color: #f5f5f5;
-            border-right: 1px solid #d9d9d9;
+            background-color: #f7f7f8;
+            border-right: 1px solid #dddddd;
         }
 
         [data-testid="stSidebar"] .block-container {
@@ -35,11 +35,18 @@ st.markdown(
         }
 
         .main-title {
-            font-size: 2.55rem;
+            font-size: 2.4rem;
             font-weight: 700;
             line-height: 1.1;
-            margin-bottom: 0.35rem;
-            color: #202020;
+            margin-bottom: 0.25rem;
+            color: #1f1f1f;
+        }
+
+        .main-note {
+            color: #5a5f66;
+            font-size: 0.95rem;
+            margin-top: 0.1rem;
+            margin-bottom: 1rem;
         }
 
         [data-baseweb="tab-list"] {
@@ -47,7 +54,7 @@ st.markdown(
             grid-template-columns: repeat(5, 1fr);
             gap: 10px;
             width: 100%;
-            margin-bottom: 0.6rem;
+            margin-bottom: 0.65rem;
         }
 
         [data-baseweb="tab"] {
@@ -71,45 +78,39 @@ st.markdown(
             color: white !important;
         }
 
-        .main-note {
-            color: #555555;
-            font-size: 0.95rem;
-            margin-top: 0.15rem;
-            margin-bottom: 1rem;
+        div[data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 0.75rem 0.9rem;
         }
 
-        .box-title {
-            font-size: 1.08rem;
+        .section-title {
+            font-size: 1.06rem;
             font-weight: 700;
             margin-bottom: 0.75rem;
+            color: #1f1f1f;
         }
 
         .subsection-title {
-            font-size: 1rem;
+            font-size: 0.98rem;
             font-weight: 700;
             margin-top: 0.2rem;
-            margin-bottom: 0.4rem;
-            color: #202020;
+            margin-bottom: 0.45rem;
+            color: #1f1f1f;
         }
 
-        .gray-box-marker {
+        .panel-marker {
             display: none;
         }
 
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.gray-box-marker) {
-            background: #f1f1f1;
-            border: 1px solid #dddddd !important;
-            border-radius: 12px;
-            padding: 0.9rem 0.9rem 0.4rem 0.9rem;
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.panel-marker) {
+            background: #f6f7f9;
+            border: 1px solid #e3e5e8 !important;
+            border-radius: 14px;
+            padding: 0.95rem 0.95rem 0.45rem 0.95rem;
             margin-top: 1rem;
             margin-bottom: 1rem;
-        }
-
-        div[data-testid="stMetric"] {
-            background: white;
-            border: 1px solid #e5e5e5;
-            border-radius: 10px;
-            padding: 0.7rem 0.9rem;
         }
     </style>
     """,
@@ -134,17 +135,16 @@ SCREENSHOT_IGNORE_KEYWORDS = [
 ]
 
 DIMENSION_COLORS = {
-    "Allgemein": "#5B8CCB",
-    "Sozial": "#72B7B2",
-    "Akademisch": "#F2A65A",
-    "Vielfalt": "#7BC96F",
+    "Allgemein": "#5B7DB1",
+    "Sozial": "#5FA8A1",
+    "Akademisch": "#D9965B",
+    "Vielfalt": "#7EAF68",
 }
 
 UI_COLORS = {
-    "mean": "#5B8CCB",
-    "count": "#72B7B2",
-    "distribution": "#F2A65A",
-    "question": "#8FAADC",
+    "distribution": "#D9965B",
+    "count": "#8E97A3",
+    "neutral_blue": "#6F8FB8",
 }
 
 
@@ -287,15 +287,16 @@ def style_fig(fig, height=320):
         paper_bgcolor="white",
         plot_bgcolor="white",
         showlegend=False,
-        title=dict(x=0, xanchor="left", font=dict(size=18, color="#1f1f1f")),
+        title=dict(x=0, xanchor="left", font=dict(size=17, color="#1f1f1f")),
         font=dict(color="#1f1f1f", size=13),
     )
-    fig.update_xaxes(showgrid=False, zeroline=False, linecolor="#d9d9d9")
-    fig.update_yaxes(gridcolor="#ececec", zeroline=False, linecolor="#d9d9d9")
+    fig.update_xaxes(showgrid=False, zeroline=False, linecolor="#d7dbe0")
+    fig.update_yaxes(gridcolor="#eceff3", zeroline=False, linecolor="#d7dbe0")
+    fig.update_traces(marker_line_width=0)
     return fig
 
 
-def make_mean_bar(data, x, y, title, orientation="v", height=320, color=UI_COLORS["mean"]):
+def make_mean_bar(data, x, y, title, orientation="v", height=320, color=UI_COLORS["neutral_blue"]):
     if x is None or y is None or y not in data.columns:
         return None
 
@@ -365,7 +366,7 @@ def make_count_chart(data, group_col, title, orientation="v", height=320, color=
     return fig
 
 
-def make_item_mean_chart(df, cols, title, color=UI_COLORS["question"]):
+def make_item_mean_chart(df, cols, title, color):
     rows = []
     for col in cols:
         num = to_numeric_series(df[col])
@@ -394,7 +395,7 @@ def make_item_mean_chart(df, cols, title, color=UI_COLORS["question"]):
     return fig
 
 
-def make_distribution_chart(df, score_col, title, color=UI_COLORS["distribution"]):
+def make_distribution_chart(df, score_col, title):
     temp = df[[score_col]].dropna().copy()
     if temp.empty:
         return None
@@ -409,7 +410,7 @@ def make_distribution_chart(df, score_col, title, color=UI_COLORS["distribution"
         y="Anzahl",
         text_auto=True,
         title=title,
-        color_discrete_sequence=[color],
+        color_discrete_sequence=[UI_COLORS["distribution"]],
     )
 
     fig = style_fig(fig, height=320)
@@ -568,40 +569,45 @@ with tabs[0]:
     else:
         m5.metric("Studiengänge", filtered_df[program_col].nunique() if program_col else 0)
 
-    top1, top2, top3 = st.columns(3)
+    upper_box = st.container(border=True)
+    with upper_box:
+        st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Ergebnislage</div>", unsafe_allow_html=True)
 
-    with top1:
-        score_df = pd.DataFrame({
-            "Dimension": list(mean_scores.keys()),
-            "Mittelwert": list(mean_scores.values()),
-        }).dropna()
+        top1, top2, top3 = st.columns([1.1, 1, 1])
 
-        if not score_df.empty:
-            fig = px.bar(
-                score_df,
-                x="Dimension",
-                y="Mittelwert",
-                color="Dimension",
-                color_discrete_map=DIMENSION_COLORS,
-                text_auto=".2f",
-                title="Durchschnitt pro Dimension"
-            )
-            fig = style_fig(fig, height=320)
-            fig.update_yaxes(range=[1, 5])
-            render_plot(fig)
-        else:
-            st.info("Keine Score-Daten vorhanden.")
+        with top1:
+            score_df = pd.DataFrame({
+                "Dimension": list(mean_scores.keys()),
+                "Mittelwert": list(mean_scores.values()),
+            }).dropna()
 
-    with top2:
-        render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
+            if not score_df.empty:
+                fig = px.bar(
+                    score_df,
+                    x="Dimension",
+                    y="Mittelwert",
+                    color="Dimension",
+                    color_discrete_map=DIMENSION_COLORS,
+                    text_auto=".2f",
+                    title="Durchschnitt pro Dimension"
+                )
+                fig = style_fig(fig, height=320)
+                fig.update_yaxes(range=[1, 5])
+                render_plot(fig)
+            else:
+                st.info("Keine Score-Daten vorhanden.")
 
-    with top3:
-        render_plot(make_count_chart(filtered_df, program_col, "Antworten nach Studiengang", orientation="h"))
+        with top2:
+            render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
+
+        with top3:
+            render_plot(make_count_chart(filtered_df, program_col, "Antworten nach Studiengang", orientation="h"))
 
     avg_box = st.container(border=True)
     with avg_box:
-        st.markdown("<div class='gray-box-marker'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='box-title'>Durchschnitt nach demografischen Daten</div>", unsafe_allow_html=True)
+        st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Durchschnitt nach demografischen Daten</div>", unsafe_allow_html=True)
 
         row1 = st.columns(3)
         with row1[0]:
@@ -619,8 +625,8 @@ with tabs[0]:
 
     count_box = st.container(border=True)
     with count_box:
-        st.markdown("<div class='gray-box-marker'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='box-title'>Personenzahl nach demografischen Daten</div>", unsafe_allow_html=True)
+        st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Personenzahl nach demografischen Daten</div>", unsafe_allow_html=True)
 
         row1 = st.columns(3)
         with row1[0]:
@@ -638,63 +644,69 @@ with tabs[0]:
 
 
 def render_detail_tab(tab_name, score_col, question_cols, select_key):
-    top_left, top_right = st.columns([1.25, 1])
+    top_box = st.container(border=True)
+    with top_box:
+        st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Ergebnisse innerhalb der Dimension</div>", unsafe_allow_html=True)
 
-    with top_left:
-        render_plot(
-            make_item_mean_chart(
-                filtered_df,
-                question_cols,
-                f"{tab_name}: Mittelwert pro Frage",
-                color=DIMENSION_COLORS.get(tab_name, UI_COLORS["question"])
+        top_left, top_right = st.columns([1.25, 1])
+
+        with top_left:
+            render_plot(
+                make_item_mean_chart(
+                    filtered_df,
+                    question_cols,
+                    f"{tab_name}: Mittelwert pro Frage",
+                    color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"])
+                )
             )
-        )
 
-    with top_right:
-        render_plot(
-            make_distribution_chart(
-                filtered_df,
-                score_col,
-                f"{tab_name}: Verteilung",
-                color=UI_COLORS["distribution"]
+        with top_right:
+            render_plot(
+                make_distribution_chart(
+                    filtered_df,
+                    score_col,
+                    f"{tab_name}: Verteilung"
+                )
             )
+
+    compare_box = st.container(border=True)
+    with compare_box:
+        st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Vergleich nach demografischen Daten</div>", unsafe_allow_html=True)
+
+        selected_label = st.selectbox(
+            "Vergleich nach",
+            list(comparison_options.keys()),
+            key=select_key,
         )
-
-    st.markdown("<div class='subsection-title'>Vergleich nach demografischen Daten</div>", unsafe_allow_html=True)
-
-    selected_label = st.selectbox(
-        "Vergleich nach",
-        list(comparison_options.keys()),
-        key=select_key,
-    )
-    selected_col = comparison_options[selected_label]
-
-    compare_left, compare_right = st.columns([1.25, 1])
-
-    with compare_left:
+        selected_col = comparison_options[selected_label]
         orientation = "h" if selected_label in ["Studiengang", "Nebenjob"] else "v"
-        render_plot(
-            make_mean_bar(
-                filtered_df,
-                selected_col,
-                score_col,
-                f"{tab_name}: Durchschnitt nach {selected_label}",
-                orientation=orientation,
-                color=DIMENSION_COLORS.get(tab_name, UI_COLORS["mean"])
-            )
-        )
 
-    with compare_right:
-        orientation = "h" if selected_label in ["Studiengang", "Nebenjob"] else "v"
-        render_plot(
-            make_count_chart(
-                filtered_df,
-                selected_col,
-                f"{tab_name}: Personenzahl nach {selected_label}",
-                orientation=orientation,
-                color=UI_COLORS["count"]
+        compare_left, compare_right = st.columns([1.25, 1])
+
+        with compare_left:
+            render_plot(
+                make_mean_bar(
+                    filtered_df,
+                    selected_col,
+                    score_col,
+                    f"{tab_name}: Durchschnitt nach {selected_label}",
+                    orientation=orientation,
+                    color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"])
+                )
             )
-        )
+
+        with compare_right:
+            render_plot(
+                make_count_chart(
+                    filtered_df,
+                    selected_col,
+                    f"{tab_name}: Personenzahl nach {selected_label}",
+                    orientation=orientation,
+                    color=UI_COLORS["count"]
+                )
+            )
 
 
 with tabs[1]:
