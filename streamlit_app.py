@@ -92,14 +92,6 @@ st.markdown(
             color: #1f1f1f;
         }
 
-        .subsection-title {
-            font-size: 0.98rem;
-            font-weight: 700;
-            margin-top: 0.2rem;
-            margin-bottom: 0.45rem;
-            color: #1f1f1f;
-        }
-
         .panel-marker {
             display: none;
         }
@@ -205,6 +197,17 @@ def apply_single_filter(df, col, selected_values):
     series = df[col].astype(str).str.strip()
     selected_set = {str(v).strip() for v in selected_values}
     return df[series.isin(selected_set)]
+
+
+def default_compare_label(options):
+    for preferred in ["Studiengang", "Geschlecht", "Alter", "Migrationshintergrund", "Nebenjob", "Abschlussjahr"]:
+        if preferred in options:
+            return preferred
+    return next(iter(options)) if options else None
+
+
+def comparison_orientation(label):
+    return "h" if label in {"Studiengang", "Nebenjob", "Abschlussjahr"} else "v"
 
 
 @st.cache_data
@@ -391,7 +394,6 @@ def make_item_mean_chart(df, cols, title, color):
 
     fig = style_fig(fig, height=360)
     fig.update_xaxes(range=[1, 5])
-
     return fig
 
 
@@ -417,6 +419,45 @@ def make_distribution_chart(df, score_col, title):
     return fig
 
 
+def make_boxplot(data, group_col, score_col, title, orientation="v", height=360, color=UI_COLORS["distribution"]):
+    if not group_col or score_col not in data.columns:
+        return None
+
+    temp = data[[group_col, score_col]].dropna().copy()
+    if temp.empty:
+        return None
+
+    temp[group_col] = temp[group_col].astype(str).str.strip()
+    temp = temp[temp[group_col] != ""]
+    if temp.empty:
+        return None
+
+    if orientation == "v":
+        fig = px.box(
+            temp,
+            x=group_col,
+            y=score_col,
+            title=title,
+            color_discrete_sequence=[color],
+            points=False,
+        )
+        fig = style_fig(fig, height=height)
+        fig.update_yaxes(range=[1, 5])
+    else:
+        fig = px.box(
+            temp,
+            x=score_col,
+            y=group_col,
+            title=title,
+            color_discrete_sequence=[color],
+            points=False,
+        )
+        fig = style_fig(fig, height=height)
+        fig.update_xaxes(range=[1, 5])
+
+    return fig
+
+
 def render_plot(fig):
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -424,7 +465,7 @@ def render_plot(fig):
         st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
 
 
-raw_df, ignored_columns = load_data()
+raw_df, _ = load_data()
 
 if raw_df is None:
     st.error(
@@ -544,6 +585,10 @@ if migration_col:
     comparison_options["Migrationshintergrund"] = migration_col
 if work_col:
     comparison_options["Nebenjob"] = work_col
+if year_col:
+    comparison_options["Abschlussjahr"] = year_col
+
+default_label = default_compare_label(comparison_options)
 
 st.markdown("<div class='main-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
 
@@ -574,7 +619,7 @@ with tabs[0]:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
         st.markdown("<div class='section-title'>Ergebnislage</div>", unsafe_allow_html=True)
 
-        top1, top2, top3 = st.columns([1.1, 1, 1])
+        top1, top2 = st.columns([1.2, 1])
 
         with top1:
             score_df = pd.DataFrame({
@@ -601,51 +646,61 @@ with tabs[0]:
         with top2:
             render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
 
-        with top3:
-            render_plot(make_count_chart(filtered_df, program_col, "Antworten nach Studiengang", orientation="h"))
-
     avg_box = st.container(border=True)
     with avg_box:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
         st.markdown("<div class='section-title'>Durchschnitt nach demografischen Daten</div>", unsafe_allow_html=True)
 
-        row1 = st.columns(3)
-        with row1[0]:
-            render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Ø Gesamt nach Geschlecht"))
-        with row1[1]:
-            render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Ø Gesamt nach Alter"))
-        with row1[2]:
-            render_plot(make_mean_bar(filtered_df, migration_col, "score_overall", "Ø Gesamt nach Migrationshintergrund"))
+        selected_avg_label = st.selectbox(
+            "Demografie für Durchschnitt",
+            list(comparison_options.keys()),
+            index=list(comparison_options.keys()).index(default_label) if default_label else 0,
+            key="overview_avg_compare",
+        )
+        selected_avg_col = comparison_options[selected_avg_label]
+        avg_orientation = comparison_orientation(selected_avg_label)
 
-        row2 = st.columns(2)
-        with row2[0]:
-            render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Ø Gesamt nach Studiengang", orientation="h"))
-        with row2[1]:
-            render_plot(make_mean_bar(filtered_df, work_col, "score_overall", "Ø Gesamt nach Nebenjob", orientation="h"))
+        render_plot(
+            make_mean_bar(
+                filtered_df,
+                selected_avg_col,
+                "score_overall",
+                f"Ø Gesamt nach {selected_avg_label}",
+                orientation=avg_orientation,
+                height=360,
+                color=UI_COLORS["neutral_blue"],
+            )
+        )
 
     count_box = st.container(border=True)
     with count_box:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
         st.markdown("<div class='section-title'>Personenzahl nach demografischen Daten</div>", unsafe_allow_html=True)
 
-        row1 = st.columns(3)
-        with row1[0]:
-            render_plot(make_count_chart(filtered_df, gender_col, "Personenzahl nach Geschlecht"))
-        with row1[1]:
-            render_plot(make_count_chart(filtered_df, age_col, "Personenzahl nach Alter"))
-        with row1[2]:
-            render_plot(make_count_chart(filtered_df, migration_col, "Personenzahl nach Migrationshintergrund"))
+        selected_count_label = st.selectbox(
+            "Demografie für Personenzahl",
+            list(comparison_options.keys()),
+            index=list(comparison_options.keys()).index(default_label) if default_label else 0,
+            key="overview_count_compare",
+        )
+        selected_count_col = comparison_options[selected_count_label]
+        count_orientation = comparison_orientation(selected_count_label)
 
-        row2 = st.columns(2)
-        with row2[0]:
-            render_plot(make_count_chart(filtered_df, program_col, "Personenzahl nach Studiengang", orientation="h"))
-        with row2[1]:
-            render_plot(make_count_chart(filtered_df, work_col, "Personenzahl nach Nebenjob", orientation="h"))
+        render_plot(
+            make_count_chart(
+                filtered_df,
+                selected_count_col,
+                f"Personenzahl nach {selected_count_label}",
+                orientation=count_orientation,
+                height=360,
+                color=UI_COLORS["count"],
+            )
+        )
 
 
 def render_detail_tab(tab_name, score_col, question_cols, select_key):
-    top_box = st.container(border=True)
-    with top_box:
+    result_box = st.container(border=True)
+    with result_box:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
         st.markdown("<div class='section-title'>Ergebnisse innerhalb der Dimension</div>", unsafe_allow_html=True)
 
@@ -678,14 +733,15 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
         selected_label = st.selectbox(
             "Vergleich nach",
             list(comparison_options.keys()),
+            index=list(comparison_options.keys()).index(default_label) if default_label else 0,
             key=select_key,
         )
         selected_col = comparison_options[selected_label]
-        orientation = "h" if selected_label in ["Studiengang", "Nebenjob"] else "v"
+        orientation = comparison_orientation(selected_label)
 
-        compare_left, compare_right = st.columns([1.25, 1])
+        top_compare_left, top_compare_right = st.columns([1.15, 1])
 
-        with compare_left:
+        with top_compare_left:
             render_plot(
                 make_mean_bar(
                     filtered_df,
@@ -693,20 +749,34 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                     score_col,
                     f"{tab_name}: Durchschnitt nach {selected_label}",
                     orientation=orientation,
+                    height=340,
                     color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"])
                 )
             )
 
-        with compare_right:
+        with top_compare_right:
             render_plot(
                 make_count_chart(
                     filtered_df,
                     selected_col,
                     f"{tab_name}: Personenzahl nach {selected_label}",
                     orientation=orientation,
+                    height=340,
                     color=UI_COLORS["count"]
                 )
             )
+
+        render_plot(
+            make_boxplot(
+                filtered_df,
+                selected_col,
+                score_col,
+                f"{tab_name}: Verteilung innerhalb der Gruppen ({selected_label})",
+                orientation=orientation,
+                height=380,
+                color=UI_COLORS["distribution"]
+            )
+        )
 
 
 with tabs[1]:
