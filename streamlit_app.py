@@ -92,6 +92,13 @@ st.markdown(
             color: #1f1f1f;
         }
 
+        .subsection-title {
+            font-size: 0.98rem;
+            font-weight: 700;
+            margin-bottom: 0.55rem;
+            color: #1f1f1f;
+        }
+
         .panel-marker {
             display: none;
         }
@@ -137,6 +144,13 @@ UI_COLORS = {
     "distribution": "#D9965B",
     "count": "#8E97A3",
     "neutral_blue": "#6F8FB8",
+}
+
+QUESTION_PREFIX = {
+    "Allgemein": "A",
+    "Sozial": "S",
+    "Akademisch": "AK",
+    "Vielfalt": "V",
 }
 
 
@@ -208,6 +222,11 @@ def default_compare_label(options):
 
 def comparison_orientation(label):
     return "h" if label in {"Studiengang", "Nebenjob", "Abschlussjahr"} else "v"
+
+
+def question_label_map(tab_name, cols):
+    prefix = QUESTION_PREFIX.get(tab_name, "Q")
+    return {col: f"{prefix}{i+1}" for i, col in enumerate(cols)}
 
 
 @st.cache_data
@@ -371,12 +390,12 @@ def make_count_chart(data, group_col, title, orientation="v", height=320, color=
     return fig
 
 
-def make_item_mean_chart(df, cols, title, color):
+def make_item_mean_chart(df, cols, title, color, labels_map):
     rows = []
     for col in cols:
         num = to_numeric_series(df[col])
         rows.append({
-            "Frage": shorten_question(col),
+            "Label": labels_map[col],
             "Mittelwert": num.mean(),
         })
 
@@ -387,7 +406,7 @@ def make_item_mean_chart(df, cols, title, color):
     fig = px.bar(
         chart_df,
         x="Mittelwert",
-        y="Frage",
+        y="Label",
         orientation="h",
         text_auto=".2f",
         title=title,
@@ -400,47 +419,38 @@ def make_item_mean_chart(df, cols, title, color):
     return fig
 
 
-def make_grouped_question_chart(df, cols, group_col, title, height=420):
+def make_group_chart_for_value(df, cols, group_col, group_value, title, color, labels_map, height=360):
     if not group_col or group_col not in df.columns:
         return None
 
+    temp_df = df[df[group_col].astype(str).str.strip() == str(group_value).strip()].copy()
+    if temp_df.empty:
+        return None
+
     rows = []
-
     for col in cols:
-        temp = pd.DataFrame({
-            "Gruppe": df[group_col].astype(str).str.strip(),
-            "Wert": to_numeric_series(df[col]),
-        }).dropna()
+        num = to_numeric_series(temp_df[col])
+        rows.append({
+            "Label": labels_map[col],
+            "Mittelwert": num.mean(),
+        })
 
-        temp = temp[temp["Gruppe"] != ""]
-        if temp.empty:
-            continue
-
-        grouped = temp.groupby("Gruppe", dropna=False)["Wert"].mean().reset_index()
-
-        for _, row in grouped.iterrows():
-            rows.append({
-                "Frage": shorten_question(col),
-                "Gruppe": row["Gruppe"],
-                "Mittelwert": row["Wert"],
-            })
-
-    chart_df = pd.DataFrame(rows)
+    chart_df = pd.DataFrame(rows).dropna()
     if chart_df.empty:
         return None
 
     fig = px.bar(
         chart_df,
         x="Mittelwert",
-        y="Frage",
-        color="Gruppe",
-        barmode="group",
+        y="Label",
         orientation="h",
         text_auto=".2f",
         title=title,
+        color_discrete_sequence=[color],
     )
 
     fig = style_fig(fig, height=height)
+    fig.update_layout(showlegend=False)
     fig.update_xaxes(range=[1, 5])
     return fig
 
@@ -514,6 +524,12 @@ def render_plot(fig):
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     else:
         st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
+
+
+def render_question_legend(tab_name, labels_map):
+    with st.expander(f"Fragenübersicht {tab_name}"):
+        for full_question, short_label in labels_map.items():
+            st.markdown(f"**{short_label}** — {full_question}")
 
 
 raw_df, _ = load_data()
@@ -705,19 +721,19 @@ with tabs[0]:
 
         row1 = st.columns(3)
         with row1[0]:
-            render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Ø Gesamt nach Geschlecht"))
+            render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Geschlecht"))
         with row1[1]:
-            render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Ø Gesamt nach Alter"))
+            render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Alter"))
         with row1[2]:
-            render_plot(make_mean_bar(filtered_df, migration_col, "score_overall", "Ø Gesamt nach Migrationshintergrund"))
+            render_plot(make_mean_bar(filtered_df, migration_col, "score_overall", "Migrationshintergrund"))
 
         row2 = st.columns(3)
         with row2[0]:
-            render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Ø Gesamt nach Studiengang", orientation="h"))
+            render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Studiengang", orientation="h"))
         with row2[1]:
-            render_plot(make_mean_bar(filtered_df, work_col, "score_overall", "Ø Gesamt nach Nebenjob", orientation="h"))
+            render_plot(make_mean_bar(filtered_df, work_col, "score_overall", "Nebenjob", orientation="h"))
         with row2[2]:
-            render_plot(make_mean_bar(filtered_df, year_col, "score_overall", "Ø Gesamt nach Abschlussjahr", orientation="h"))
+            render_plot(make_mean_bar(filtered_df, year_col, "score_overall", "Abschlussjahr", orientation="h"))
 
     count_box = st.container(border=True)
     with count_box:
@@ -726,30 +742,23 @@ with tabs[0]:
 
         row1 = st.columns(3)
         with row1[0]:
-            render_plot(make_count_chart(filtered_df, gender_col, "Personenzahl nach Geschlecht"))
+            render_plot(make_count_chart(filtered_df, gender_col, "Geschlecht"))
         with row1[1]:
-            render_plot(make_count_chart(filtered_df, age_col, "Personenzahl nach Alter"))
+            render_plot(make_count_chart(filtered_df, age_col, "Alter"))
         with row1[2]:
-            render_plot(make_count_chart(filtered_df, migration_col, "Personenzahl nach Migrationshintergrund"))
+            render_plot(make_count_chart(filtered_df, migration_col, "Migrationshintergrund"))
 
         row2 = st.columns(3)
         with row2[0]:
-            render_plot(make_count_chart(filtered_df, program_col, "Personenzahl nach Studiengang", orientation="h"))
+            render_plot(make_count_chart(filtered_df, program_col, "Studiengang", orientation="h"))
         with row2[1]:
-            render_plot(make_count_chart(filtered_df, work_col, "Personenzahl nach Nebenjob", orientation="h"))
+            render_plot(make_count_chart(filtered_df, work_col, "Nebenjob", orientation="h"))
         with row2[2]:
-            render_plot(make_count_chart(filtered_df, year_col, "Personenzahl nach Abschlussjahr", orientation="h"))
+            render_plot(make_count_chart(filtered_df, year_col, "Abschlussjahr", orientation="h"))
 
 
 def render_detail_tab(tab_name, score_col, question_cols, select_key):
-    selected_label = st.selectbox(
-        "Vergleich nach",
-        list(comparison_options.keys()),
-        index=list(comparison_options.keys()).index(default_label) if default_label else 0,
-        key=select_key,
-    )
-    selected_col = comparison_options[selected_label]
-    orientation = comparison_orientation(selected_label)
+    labels_map = question_label_map(tab_name, question_cols)
 
     result_box = st.container(border=True)
     with result_box:
@@ -760,11 +769,12 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
 
         with top_left:
             render_plot(
-                make_grouped_question_chart(
+                make_item_mean_chart(
                     filtered_df,
                     question_cols,
-                    selected_col,
-                    f"{tab_name}: Mittelwert pro Frage nach {selected_label}"
+                    f"{tab_name}: Mittelwert pro Frage",
+                    color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"]),
+                    labels_map=labels_map,
                 )
             )
 
@@ -777,14 +787,55 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                 )
             )
 
+        render_question_legend(tab_name, labels_map)
+
     compare_box = st.container(border=True)
     with compare_box:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-title'>Vergleich nach demografischen Daten</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Demografische Gegenüberstellung</div>", unsafe_allow_html=True)
 
-        top_compare_left, top_compare_right = st.columns([1.15, 1])
+        selected_label = st.selectbox(
+            "Demografie",
+            list(comparison_options.keys()),
+            index=list(comparison_options.keys()).index(default_label) if default_label else 0,
+            key=select_key,
+            label_visibility="collapsed",
+        )
+        selected_col = comparison_options[selected_label]
+        orientation = comparison_orientation(selected_label)
 
-        with top_compare_left:
+        group_values = get_filter_options(filtered_df[selected_col]) if selected_col else []
+
+        if group_values:
+            st.markdown(f"<div class='subsection-title'>Fragenvergleich nach {selected_label}</div>", unsafe_allow_html=True)
+
+            cols_per_row = 2 if len(group_values) == 2 else 3
+
+            for start in range(0, len(group_values), cols_per_row):
+                row_values = group_values[start:start + cols_per_row]
+                row_cols = st.columns(cols_per_row)
+
+                for i, group_value in enumerate(row_values):
+                    group_count = (
+                        filtered_df[selected_col].astype(str).str.strip().eq(str(group_value).strip()).sum()
+                    )
+                    with row_cols[i]:
+                        render_plot(
+                            make_group_chart_for_value(
+                                filtered_df,
+                                question_cols,
+                                selected_col,
+                                group_value,
+                                f"{group_value} (n={group_count})",
+                                color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"]),
+                                labels_map=labels_map,
+                                height=340,
+                            )
+                        )
+
+        summary_left, summary_right = st.columns([1.15, 1])
+
+        with summary_left:
             render_plot(
                 make_mean_bar(
                     filtered_df,
@@ -797,7 +848,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                 )
             )
 
-        with top_compare_right:
+        with summary_right:
             render_plot(
                 make_count_chart(
                     filtered_df,
