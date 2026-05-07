@@ -191,14 +191,6 @@ def to_numeric_series(series):
     )
 
 
-def shorten_question(text):
-    text = str(text).strip()
-    text = re.sub(r"\s+", " ", text)
-    if len(text) <= 75:
-        return text
-    return text[:72] + "..."
-
-
 def get_filter_options(series):
     values = series.dropna().astype(str).str.strip()
     values = values[values != ""]
@@ -347,6 +339,8 @@ def make_mean_bar(data, x, y, title, orientation="v", height=320, color=UI_COLOR
 
     fig = style_fig(fig, height=height)
     fig.update_layout(showlegend=False)
+    fig.update_xaxes(title=None)
+    fig.update_yaxes(title=None)
 
     if orientation == "v":
         fig.update_yaxes(range=[1, 5])
@@ -387,6 +381,8 @@ def make_count_chart(data, group_col, title, orientation="v", height=320, color=
 
     fig = style_fig(fig, height=height)
     fig.update_layout(showlegend=False)
+    fig.update_xaxes(title=None)
+    fig.update_yaxes(title=None)
     return fig
 
 
@@ -415,7 +411,8 @@ def make_item_mean_chart(df, cols, title, color, labels_map):
 
     fig = style_fig(fig, height=360)
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(range=[1, 5])
+    fig.update_xaxes(range=[1, 5], title=None)
+    fig.update_yaxes(title=None)
     return fig
 
 
@@ -451,7 +448,8 @@ def make_group_chart_for_value(df, cols, group_col, group_value, title, color, l
 
     fig = style_fig(fig, height=height)
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(range=[1, 5])
+    fig.update_xaxes(range=[1, 5], title=None)
+    fig.update_yaxes(title=None)
     return fig
 
 
@@ -475,6 +473,8 @@ def make_distribution_chart(df, score_col, title):
 
     fig = style_fig(fig, height=320)
     fig.update_layout(showlegend=False)
+    fig.update_xaxes(title=None)
+    fig.update_yaxes(title=None)
     return fig
 
 
@@ -502,7 +502,8 @@ def make_boxplot(data, group_col, score_col, title, orientation="v", height=380,
         )
         fig = style_fig(fig, height=height)
         fig.update_layout(showlegend=False)
-        fig.update_yaxes(range=[1, 5])
+        fig.update_yaxes(range=[1, 5], title=None)
+        fig.update_xaxes(title=None)
     else:
         fig = px.box(
             temp,
@@ -514,7 +515,8 @@ def make_boxplot(data, group_col, score_col, title, orientation="v", height=380,
         )
         fig = style_fig(fig, height=height)
         fig.update_layout(showlegend=False)
-        fig.update_xaxes(range=[1, 5])
+        fig.update_xaxes(range=[1, 5], title=None)
+        fig.update_yaxes(title=None)
 
     return fig
 
@@ -706,7 +708,8 @@ with tabs[0]:
                 )
                 fig = style_fig(fig, height=320)
                 fig.update_layout(showlegend=False)
-                fig.update_yaxes(range=[1, 5])
+                fig.update_xaxes(title=None)
+                fig.update_yaxes(range=[1, 5], title=None)
                 render_plot(fig)
             else:
                 st.info("Keine Score-Daten vorhanden.")
@@ -816,9 +819,6 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                 row_cols = st.columns(cols_per_row)
 
                 for i, group_value in enumerate(row_values):
-                    group_count = (
-                        filtered_df[selected_col].astype(str).str.strip().eq(str(group_value).strip()).sum()
-                    )
                     with row_cols[i]:
                         render_plot(
                             make_group_chart_for_value(
@@ -826,7 +826,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                                 question_cols,
                                 selected_col,
                                 group_value,
-                                f"{group_value} (n={group_count})",
+                                f"{group_value}",
                                 color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"]),
                                 labels_map=labels_map,
                                 height=340,
