@@ -1,5 +1,6 @@
 import os
 import re
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -153,6 +154,30 @@ QUESTION_PREFIX = {
     "Vielfalt": "V",
 }
 
+FREE_TEXT_THEMES = {
+    "help": {
+        "Mitstudierende / Austausch": ["mitstud", "freund", "austausch", "gruppe", "gruppenarbeit", "kolleg"],
+        "Dozierende / Unterstützung": ["dozier", "lehr", "prof", "unterstütz", "feedback", "ansprech"],
+        "Struktur / Kommunikation": ["klar", "kommun", "info", "organis", "übersicht", "transpar"],
+        "Veranstaltungen / Community": ["event", "veranstalt", "community", "campus", "anlass"],
+        "Wohlbefinden / Offenheit": ["wohl", "offen", "respekt", "sicher", "willkommen"],
+    },
+    "difficult": {
+        "Allein / ausgeschlossen": ["allein", "einsam", "isol", "ausgeschlossen", "nicht zugehörig"],
+        "Gruppenarbeiten / Teams": ["gruppenarbeit", "gruppe", "team"],
+        "Unterricht / Klasse": ["unterricht", "vorles", "klasse", "seminar"],
+        "Unklare Kommunikation": ["unklar", "kommun", "info", "nicht informiert", "verwirr"],
+        "Druck / Unsicherheit": ["druck", "unsicher", "überfordert", "stress", "angst"],
+    },
+    "wish": {
+        "Mehr Austausch / Vernetzung": ["austausch", "vernet", "kennenlernen", "community"],
+        "Mehr Unterstützung": ["unterstütz", "beratung", "hilfe", "ansprech"],
+        "Bessere Kommunikation": ["kommun", "info", "klar", "transpar"],
+        "Mehr Angebote / Events": ["angebot", "event", "veranstalt", "workshop"],
+        "Mehr Offenheit / Inklusion": ["offen", "respekt", "wertschätz", "inklusi", "divers"],
+    },
+}
+
 
 def normalize(text):
     text = str(text or "").strip().lower()
@@ -219,6 +244,63 @@ def comparison_orientation(label):
 def question_label_map(tab_name, cols):
     prefix = QUESTION_PREFIX.get(tab_name, "Q")
     return {col: f"{prefix}{i+1}" for i, col in enumerate(cols)}
+
+
+def clean_quote(text, max_len=140):
+    text = str(text).strip()
+    text = re.sub(r"\s+", " ", text)
+    if len(text) > max_len:
+        return text[:max_len - 3] + "..."
+    return text
+
+
+def summarize_free_text(series, theme_map, max_quotes=2, top_n=4):
+    if series is None:
+        return [], [], 0
+
+    responses = [
+        str(x).strip()
+        for x in series.dropna().tolist()
+        if str(x).strip()
+    ]
+
+    if not responses:
+        return [], [], 0
+
+    counts = Counter()
+    theme_quotes = {theme: [] for theme in theme_map}
+    fallback_quotes = []
+
+    for response in responses:
+        text = response.lower()
+        matched_theme = None
+
+        for theme, keywords in theme_map.items():
+            if any(keyword in text for keyword in keywords):
+                matched_theme = theme
+                break
+
+        if matched_theme:
+            counts[matched_theme] += 1
+            if len(theme_quotes[matched_theme]) < max_quotes:
+                theme_quotes[matched_theme].append(clean_quote(response))
+        else:
+            if len(fallback_quotes) < max_quotes:
+                fallback_quotes.append(clean_quote(response))
+
+    top_themes = [(theme, count) for theme, count in counts.most_common(top_n)]
+
+    quotes = []
+    for theme, _ in top_themes:
+        for quote in theme_quotes[theme]:
+            if quote not in quotes and len(quotes) < max_quotes:
+                quotes.append(quote)
+
+    for quote in fallback_quotes:
+        if quote not in quotes and len(quotes) < max_quotes:
+            quotes.append(quote)
+
+    return top_themes, quotes, len(responses)
 
 
 @st.cache_data
@@ -534,6 +616,29 @@ def render_question_legend(tab_name, labels_map):
             st.markdown(f"**{short_label}** — {full_question}")
 
 
+def render_free_text_column(title, series, theme_map):
+    st.markdown(f"<div class='subsection-title'>{title}</div>", unsafe_allow_html=True)
+
+    top_themes, quotes, total_count = summarize_free_text(series, theme_map)
+
+    if total_count == 0:
+        st.info("Keine Freitextantworten vorhanden.")
+        return
+
+    st.caption(f"{total_count} Antworten")
+
+    if top_themes:
+        for theme, count in top_themes:
+            st.markdown(f"- **{theme}** ({count})")
+    else:
+        st.markdown("- Keine klaren Themen erkannt.")
+
+    if quotes:
+        st.caption("Beispiele")
+        for quote in quotes:
+            st.markdown(f"> {quote}")
+
+
 raw_df, _ = load_data()
 
 if raw_df is None:
@@ -552,6 +657,10 @@ gender_col = find_column(df, "wie identifizieren sie sich geschlechtlich")
 year_col = find_column(df, "in welchem jahr haben sie ihr studium abgeschlossen")
 work_col = find_column(df, "arbeiten sie neben dem studium")
 program_col = find_column(df, "welchen studiengang studieren sie")
+
+help_text_col = find_column(df, "was hat ihnen bisher geholfen, sich im studium zugehörig zu fühlen")
+difficult_text_col = find_column(df, "wann oder in welchen situationen fühlen sie sich nicht zugehörig")
+wish_text_col = find_column(df, "was wünschen sie, um sich an der hochschule wohler und integrierter zu fühlen")
 
 if timestamp_col:
     df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
@@ -758,6 +867,34 @@ with tabs[0]:
             render_plot(make_count_chart(filtered_df, work_col, "Nebenjob", orientation="h"))
         with row2[2]:
             render_plot(make_count_chart(filtered_df, year_col, "Abschlussjahr", orientation="h"))
+
+    text_box = st.container(border=True)
+    with text_box:
+        st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Freitext-Zusammenfassung</div>", unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            render_free_text_column(
+                "Was hilft?",
+                filtered_df[help_text_col] if help_text_col else None,
+                FREE_TEXT_THEMES["help"],
+            )
+
+        with col2:
+            render_free_text_column(
+                "Was ist schwierig?",
+                filtered_df[difficult_text_col] if difficult_text_col else None,
+                FREE_TEXT_THEMES["difficult"],
+            )
+
+        with col3:
+            render_free_text_column(
+                "Was wird gewünscht?",
+                filtered_df[wish_text_col] if wish_text_col else None,
+                FREE_TEXT_THEMES["wish"],
+            )
 
 
 def render_detail_tab(tab_name, score_col, question_cols, select_key):
