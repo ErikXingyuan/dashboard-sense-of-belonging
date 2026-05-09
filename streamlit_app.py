@@ -632,7 +632,6 @@ if year_col:
 default_label = default_compare_label(comparison_options)
 
 
-st.markdown("<div class='main-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
 tabs = st.tabs(["Übersicht", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
 
 st.markdown(
