@@ -8,6 +8,9 @@ import streamlit as st
 
 st.set_page_config(page_title="HSLU Sense of Belonging", layout="wide")
 
+if "freitext_seed" not in st.session_state:
+    st.session_state["freitext_seed"] = 42
+
 st.markdown(
     """
     <style>
@@ -534,7 +537,7 @@ def render_question_legend(tab_name, labels_map):
             st.markdown(f"**{short_label}** — {full_question}")
 
 
-def render_random_text_column(title, series, min_quotes=1, max_quotes=3, max_len=180):
+def render_random_text_column(title, series, seed, min_quotes=1, max_quotes=3, max_len=180):
     st.markdown(f"<div class='subsection-title'>{title}</div>", unsafe_allow_html=True)
 
     if series is None:
@@ -555,7 +558,7 @@ def render_random_text_column(title, series, min_quotes=1, max_quotes=3, max_len
 
     sample_size = min(max_quotes, len(responses))
     sample_size = max(min_quotes, sample_size)
-    sampled = pd.Series(responses).sample(n=sample_size, random_state=42).tolist()
+    sampled = pd.Series(responses).sample(n=sample_size, random_state=seed).tolist()
 
     for quote in sampled:
         quote = re.sub(r"\s+", " ", quote)
@@ -796,7 +799,13 @@ with tabs[0]:
     text_box = st.container(border=True)
     with text_box:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-title'>Freitext-Antworten</div>", unsafe_allow_html=True)
+
+        title_col, button_col = st.columns([6, 1])
+        with title_col:
+            st.markdown("<div class='section-title'>Freitext-Antworten</div>", unsafe_allow_html=True)
+        with button_col:
+            if st.button("Aktualisieren", key="refresh_freitext"):
+                st.session_state["freitext_seed"] += 1
 
         col1, col2, col3 = st.columns(3)
 
@@ -804,18 +813,21 @@ with tabs[0]:
             render_random_text_column(
                 "Was hat Ihnen bisher geholfen, sich im Studium zugehörig zu fühlen?",
                 filtered_df[help_text_col] if help_text_col else None,
+                seed=st.session_state["freitext_seed"],
             )
 
         with col2:
             render_random_text_column(
                 "Wann oder in welchen Situationen fühlen Sie sich nicht zugehörig?",
                 filtered_df[difficult_text_col] if difficult_text_col else None,
+                seed=st.session_state["freitext_seed"] + 1,
             )
 
         with col3:
             render_random_text_column(
                 "Was wünschen Sie, um sich an der Hochschule wohler und integrierter zu fühlen?",
                 filtered_df[wish_text_col] if wish_text_col else None,
+                seed=st.session_state["freitext_seed"] + 2,
             )
 
 
