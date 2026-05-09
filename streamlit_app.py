@@ -6,10 +6,12 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+
 st.set_page_config(page_title="HSLU Sense of Belonging", layout="wide")
 
 if "freitext_seed" not in st.session_state:
     st.session_state["freitext_seed"] = 42
+
 
 st.markdown(
     """
@@ -119,6 +121,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
 
 SCREENSHOT_IGNORE_KEYWORDS = [
@@ -159,33 +162,22 @@ QUESTION_PREFIX = {
 
 def normalize(text):
     text = str(text or "").strip().lower()
-    text = re.sub(r"\s+", " ", text)
-    return text
+    return re.sub(r"\s+", " ", text)
 
 
-def is_ignored_column(col_name):
-    col_norm = normalize(col_name)
-    return any(keyword in col_norm for keyword in SCREENSHOT_IGNORE_KEYWORDS)
-
-
-def find_column(df, contains_text):
-    contains_text = normalize(contains_text)
+def find_column(df, search_text):
+    search_text = normalize(search_text)
     for col in df.columns:
-        if contains_text in normalize(col):
+        if search_text in normalize(col):
             return col
     return None
 
 
-def find_columns(df, contains_texts):
-    cols = []
-    for text in contains_texts:
-        col = find_column(df, text)
-        if col:
-            cols.append(col)
-    return cols
+def find_columns(df, search_texts):
+    return [col for text in search_texts if (col := find_column(df, text))]
 
 
-def to_numeric_series(series):
+def to_numeric(series):
     return pd.to_numeric(
         series.astype(str)
         .str.extract(r"(\d+(?:[.,]\d+)?)")[0]
@@ -194,25 +186,18 @@ def to_numeric_series(series):
     )
 
 
-def get_filter_options(series):
+def get_options(series):
     values = series.dropna().astype(str).str.strip()
     values = values[values != ""]
     return sorted(values.unique().tolist(), key=lambda x: str(x).lower())
 
 
-def apply_single_filter(df, col, selected_values):
+def apply_filter(df, col, selected_values):
     if not col or not selected_values:
         return df
-    series = df[col].astype(str).str.strip()
-    selected_set = {str(v).strip() for v in selected_values}
-    return df[series.isin(selected_set)]
-
-
-def default_compare_label(options):
-    for preferred in ["Geschlecht", "Studiengang", "Alter", "Migrationshintergrund", "Nebenjob", "Abschlussjahr"]:
-        if preferred in options:
-            return preferred
-    return next(iter(options)) if options else None
+    values = df[col].astype(str).str.strip()
+    selected = {str(v).strip() for v in selected_values}
+    return df[values.isin(selected)]
 
 
 def comparison_orientation(label):
@@ -221,78 +206,78 @@ def comparison_orientation(label):
 
 def question_label_map(tab_name, cols):
     prefix = QUESTION_PREFIX.get(tab_name, "Q")
-    return {col: f"{prefix}{i+1}" for i, col in enumerate(cols)}
+    return {col: f"{prefix}{i + 1}" for i, col in enumerate(cols)}
+
+
+def default_compare_label(options):
+    order = ["Geschlecht", "Studiengang", "Alter", "Migrationshintergrund", "Nebenjob", "Abschlussjahr"]
+    for label in order:
+        if label in options:
+            return label
+    return next(iter(options)) if options else None
 
 
 @st.cache_data
 def load_data():
     if not os.path.exists(DEFAULT_FILE):
-        return None, None
+        return None
 
-    raw = pd.read_excel(DEFAULT_FILE)
-    raw.columns = [str(c).strip() for c in raw.columns]
+    df = pd.read_excel(DEFAULT_FILE)
+    df.columns = [str(c).strip() for c in df.columns]
 
-    for col in raw.columns:
-        if raw[col].dtype == object:
-            raw[col] = raw[col].replace({"": np.nan})
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = df[col].replace({"": np.nan})
 
-    ignored_columns = [col for col in raw.columns if is_ignored_column(col)]
-    return raw, ignored_columns
+    return df
 
 
-def add_score_columns(df):
-    general_cols = find_columns(df, [
-        "ich fühle mich an meiner hochschule willkommen",
-        "ich habe das gefühl, dass ich als student",
-        "ich empfinde ein zugehörigkeitsgefühl gegenüber meiner studienrichtung",
-        "ich werde als person an der hochschule wahrgenommen",
-        "ich identifiziere mich mit der kultur und den werten meiner hochschule",
-    ])
-
-    social_cols = find_columns(df, [
-        "ich habe im studium freundschaften",
-        "ich fühle mich in der studierendenschaft gut integriert",
-        "ich habe mitstudierende, mit denen ich offen über herausforderungen sprechen kann",
-        "in gruppenarbeiten oder im unterricht fühle ich mich ernst genommen",
-        "ich weiss, wo ich soziale unterstützung an der hochschule finden kann",
-        "ich habe im studium personen, an die ich mich bei persönlichen oder sozialen unsicherheiten wenden kann",
-    ])
-
-    academic_cols = find_columns(df, [
-        "ich fühle mich im unterricht / in lehrveranstaltungen respektiert",
-        "ich habe das gefühl, dass meine sichtweisen",
-        "ich kann fragen stellen oder beiträge leisten, ohne mich unwohl zu fühlen",
-        "die hochschule unterstützt mich in meiner persönlichen und akademischen entwicklung",
-        "ich weiss, an wen ich mich bei fachlichen fragen oder unsicherheiten wenden kann",
-    ])
-
-    diversity_cols = find_columns(df, [
-        "meine herkunft, sprache oder soziale situation werden an der hochschule respektiert",
-        "ich habe das gefühl, dass vielfalt im studium wertgeschätzt wird",
-        "ich kann mich im hochschulalltag authentisch zeigen",
-    ])
-
+def add_scores(df):
     groups = {
-        "Allgemein": general_cols,
-        "Sozial": social_cols,
-        "Akademisch": academic_cols,
-        "Vielfalt": diversity_cols,
+        "Allgemein": find_columns(df, [
+            "ich fühle mich an meiner hochschule willkommen",
+            "ich habe das gefühl, dass ich als student",
+            "ich empfinde ein zugehörigkeitsgefühl gegenüber meiner studienrichtung",
+            "ich werde als person an der hochschule wahrgenommen",
+            "ich identifiziere mich mit der kultur und den werten meiner hochschule",
+        ]),
+        "Sozial": find_columns(df, [
+            "ich habe im studium freundschaften",
+            "ich fühle mich in der studierendenschaft gut integriert",
+            "ich habe mitstudierende, mit denen ich offen über herausforderungen sprechen kann",
+            "in gruppenarbeiten oder im unterricht fühle ich mich ernst genommen",
+            "ich weiss, wo ich soziale unterstützung an der hochschule finden kann",
+            "ich habe im studium personen, an die ich mich bei persönlichen oder sozialen unsicherheiten wenden kann",
+        ]),
+        "Akademisch": find_columns(df, [
+            "ich fühle mich im unterricht / in lehrveranstaltungen respektiert",
+            "ich habe das gefühl, dass meine sichtweisen",
+            "ich kann fragen stellen oder beiträge leisten, ohne mich unwohl zu fühlen",
+            "die hochschule unterstützt mich in meiner persönlichen und akademischen entwicklung",
+            "ich weiss, an wen ich mich bei fachlichen fragen oder unsicherheiten wenden kann",
+        ]),
+        "Vielfalt": find_columns(df, [
+            "meine herkunft, sprache oder soziale situation werden an der hochschule respektiert",
+            "ich habe das gefühl, dass vielfalt im studium wertgeschätzt wird",
+            "ich kann mich im hochschulalltag authentisch zeigen",
+        ]),
     }
 
     df = df.copy()
-    all_score_cols = []
+    all_numeric_cols = []
 
     for group_name, cols in groups.items():
         numeric_cols = []
         for col in cols:
             num_col = f"__num__{col}"
-            df[num_col] = to_numeric_series(df[col])
+            df[num_col] = to_numeric(df[col])
             numeric_cols.append(num_col)
-            all_score_cols.append(num_col)
+            all_numeric_cols.append(num_col)
 
-        df[f"score_{group_name.lower()}"] = df[numeric_cols].mean(axis=1) if numeric_cols else np.nan
+        score_col = f"score_{group_name.lower()}"
+        df[score_col] = df[numeric_cols].mean(axis=1) if numeric_cols else np.nan
 
-    df["score_overall"] = df[all_score_cols].mean(axis=1) if all_score_cols else np.nan
+    df["score_overall"] = df[all_numeric_cols].mean(axis=1) if all_numeric_cols else np.nan
     return df, groups
 
 
@@ -308,42 +293,40 @@ def style_fig(fig, height=320):
         title=dict(x=0, xanchor="left", font=dict(size=17, color="#1f1f1f")),
         font=dict(color="#1f1f1f", size=13),
     )
-    fig.update_xaxes(showgrid=False, zeroline=False, linecolor="#d7dbe0")
-    fig.update_yaxes(gridcolor="#eceff3", zeroline=False, linecolor="#d7dbe0")
+    fig.update_xaxes(showgrid=False, zeroline=False, linecolor="#d7dbe0", title=None)
+    fig.update_yaxes(gridcolor="#eceff3", zeroline=False, linecolor="#d7dbe0", title=None)
     return fig
 
 
-def make_mean_bar(data, x, y, title, orientation="v", height=320, color=UI_COLORS["neutral_blue"]):
-    if x is None or y is None or y not in data.columns:
+def make_mean_bar(data, group_col, score_col, title, orientation="v", height=320, color=UI_COLORS["neutral_blue"]):
+    if not group_col or score_col not in data.columns:
         return None
 
-    temp = data[[x, y]].dropna().copy()
+    temp = data[[group_col, score_col]].dropna().copy()
     if temp.empty:
         return None
 
-    temp[x] = temp[x].astype(str).str.strip()
+    temp[group_col] = temp[group_col].astype(str).str.strip()
 
     chart_df = (
-        temp.groupby(x, dropna=False)[y]
+        temp.groupby(group_col, dropna=False)[score_col]
         .mean()
         .reset_index()
-        .sort_values(y, ascending=(orientation == "h"))
+        .sort_values(score_col, ascending=(orientation == "h"))
     )
 
     fig = px.bar(
         chart_df,
-        x=x if orientation == "v" else y,
-        y=y if orientation == "v" else x,
+        x=group_col if orientation == "v" else score_col,
+        y=score_col if orientation == "v" else group_col,
         orientation=orientation,
         text_auto=".2f",
         title=title,
         color_discrete_sequence=[color],
     )
 
-    fig = style_fig(fig, height=height)
+    fig = style_fig(fig, height)
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title=None)
-    fig.update_yaxes(title=None)
 
     if orientation == "v":
         fig.update_yaxes(range=[1, 5])
@@ -382,20 +365,17 @@ def make_count_chart(data, group_col, title, orientation="v", height=320, color=
         color_discrete_sequence=[color],
     )
 
-    fig = style_fig(fig, height=height)
+    fig = style_fig(fig, height)
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title=None)
-    fig.update_yaxes(title=None)
     return fig
 
 
 def make_item_mean_chart(df, cols, title, color, labels_map):
     rows = []
     for col in cols:
-        num = to_numeric_series(df[col])
         rows.append({
             "Label": labels_map[col],
-            "Mittelwert": num.mean(),
+            "Mittelwert": to_numeric(df[col]).mean(),
         })
 
     chart_df = pd.DataFrame(rows).dropna()
@@ -412,10 +392,9 @@ def make_item_mean_chart(df, cols, title, color, labels_map):
         color_discrete_sequence=[color],
     )
 
-    fig = style_fig(fig, height=360)
+    fig = style_fig(fig, 360)
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(range=[1, 5], title=None)
-    fig.update_yaxes(title=None)
+    fig.update_xaxes(range=[1, 5])
     return fig
 
 
@@ -429,10 +408,9 @@ def make_group_chart_for_value(df, cols, group_col, group_value, title, color, l
 
     rows = []
     for col in cols:
-        num = to_numeric_series(temp_df[col])
         rows.append({
             "Label": labels_map[col],
-            "Mittelwert": num.mean(),
+            "Mittelwert": to_numeric(temp_df[col]).mean(),
         })
 
     chart_df = pd.DataFrame(rows).dropna()
@@ -449,10 +427,9 @@ def make_group_chart_for_value(df, cols, group_col, group_value, title, color, l
         color_discrete_sequence=[color],
     )
 
-    fig = style_fig(fig, height=height)
+    fig = style_fig(fig, height)
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(range=[1, 5], title=None)
-    fig.update_yaxes(title=None)
+    fig.update_xaxes(range=[1, 5])
     return fig
 
 
@@ -474,10 +451,8 @@ def make_distribution_chart(df, score_col, title):
         color_discrete_sequence=[UI_COLORS["distribution"]],
     )
 
-    fig = style_fig(fig, height=320)
+    fig = style_fig(fig, 320)
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title=None)
-    fig.update_yaxes(title=None)
     return fig
 
 
@@ -503,10 +478,8 @@ def make_boxplot(data, group_col, score_col, title, orientation="v", height=380,
             color_discrete_sequence=[color],
             points=False,
         )
-        fig = style_fig(fig, height=height)
-        fig.update_layout(showlegend=False)
-        fig.update_yaxes(range=[1, 5], title=None)
-        fig.update_xaxes(title=None)
+        fig = style_fig(fig, height)
+        fig.update_yaxes(range=[1, 5])
     else:
         fig = px.box(
             temp,
@@ -516,19 +489,18 @@ def make_boxplot(data, group_col, score_col, title, orientation="v", height=380,
             color_discrete_sequence=[color],
             points=False,
         )
-        fig = style_fig(fig, height=height)
-        fig.update_layout(showlegend=False)
-        fig.update_xaxes(range=[1, 5], title=None)
-        fig.update_yaxes(title=None)
+        fig = style_fig(fig, height)
+        fig.update_xaxes(range=[1, 5])
 
+    fig.update_layout(showlegend=False)
     return fig
 
 
 def render_plot(fig):
-    if fig is not None:
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    else:
+    if fig is None:
         st.info("Für diese Ansicht sind keine passenden Daten vorhanden.")
+    else:
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def render_question_legend(tab_name, labels_map):
@@ -544,20 +516,14 @@ def render_random_text_column(title, series, seed, min_quotes=1, max_quotes=3, m
         st.info("Keine Freitextantworten vorhanden.")
         return
 
-    responses = [
-        str(x).strip()
-        for x in series.dropna().tolist()
-        if str(x).strip()
-    ]
-
+    responses = [str(x).strip() for x in series.dropna().tolist() if str(x).strip()]
     if not responses:
         st.info("Keine Freitextantworten vorhanden.")
         return
 
     st.caption(f"{len(responses)} Antworten")
 
-    sample_size = min(max_quotes, len(responses))
-    sample_size = max(min_quotes, sample_size)
+    sample_size = max(min_quotes, min(max_quotes, len(responses)))
     sampled = pd.Series(responses).sample(n=sample_size, random_state=seed).tolist()
 
     for quote in sampled:
@@ -567,16 +533,13 @@ def render_random_text_column(title, series, seed, min_quotes=1, max_quotes=3, m
         st.markdown(f"> {quote}")
 
 
-raw_df, _ = load_data()
+raw_df = load_data()
 
 if raw_df is None:
-    st.error(
-        f"Datei nicht gefunden: {DEFAULT_FILE}. "
-        "Lege die Excel-Datei in denselben Ordner wie die App."
-    )
+    st.error(f"Datei nicht gefunden: {DEFAULT_FILE}. Lege die Excel-Datei in denselben Ordner wie die App.")
     st.stop()
 
-df, groups = add_score_columns(raw_df)
+df, groups = add_scores(raw_df)
 
 timestamp_col = find_column(df, "timestamp")
 migration_col = find_column(df, "migrationshintergrund")
@@ -596,6 +559,7 @@ if timestamp_col:
 else:
     df["Antwortjahr"] = np.nan
 
+
 year_from = None
 year_to = None
 
@@ -603,7 +567,7 @@ with st.sidebar:
     st.markdown("<div class='sidebar-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
     st.markdown("### Filter")
 
-    if "Antwortjahr" in df.columns and df["Antwortjahr"].notna().any():
+    if df["Antwortjahr"].notna().any():
         available_years = sorted(df["Antwortjahr"].dropna().astype(int).unique().tolist())
         c1, c2 = st.columns(2)
         with c1:
@@ -611,55 +575,25 @@ with st.sidebar:
         with c2:
             year_to = st.selectbox("Jahr bis", available_years, index=len(available_years) - 1, key="year_to")
 
-    study_program_selected = st.multiselect(
-        "Studiengang",
-        get_filter_options(df[program_col]) if program_col else [],
-        key="filter_program",
-    ) if program_col else []
+    study_program_selected = st.multiselect("Studiengang", get_options(df[program_col]) if program_col else [], key="filter_program") if program_col else []
+    gender_selected = st.multiselect("Geschlecht", get_options(df[gender_col]) if gender_col else [], key="filter_gender") if gender_col else []
+    age_selected = st.multiselect("Alter", get_options(df[age_col]) if age_col else [], key="filter_age") if age_col else []
+    migration_selected = st.multiselect("Migrationshintergrund", get_options(df[migration_col]) if migration_col else [], key="filter_migration") if migration_col else []
+    graduation_year_selected = st.multiselect("Abschlussjahr", get_options(df[year_col]) if year_col else [], key="filter_gradyear") if year_col else []
+    work_selected = st.multiselect("Nebenjob", get_options(df[work_col]) if work_col else [], key="filter_work") if work_col else []
 
-    gender_selected = st.multiselect(
-        "Geschlecht",
-        get_filter_options(df[gender_col]) if gender_col else [],
-        key="filter_gender",
-    ) if gender_col else []
-
-    age_selected = st.multiselect(
-        "Alter",
-        get_filter_options(df[age_col]) if age_col else [],
-        key="filter_age",
-    ) if age_col else []
-
-    migration_selected = st.multiselect(
-        "Migrationshintergrund",
-        get_filter_options(df[migration_col]) if migration_col else [],
-        key="filter_migration",
-    ) if migration_col else []
-
-    graduation_year_selected = st.multiselect(
-        "Abschlussjahr",
-        get_filter_options(df[year_col]) if year_col else [],
-        key="filter_gradyear",
-    ) if year_col else []
-
-    work_selected = st.multiselect(
-        "Nebenjob",
-        get_filter_options(df[work_col]) if work_col else [],
-        key="filter_work",
-    ) if work_col else []
 
 filtered_df = df.copy()
-filtered_df = apply_single_filter(filtered_df, program_col, study_program_selected)
-filtered_df = apply_single_filter(filtered_df, gender_col, gender_selected)
-filtered_df = apply_single_filter(filtered_df, age_col, age_selected)
-filtered_df = apply_single_filter(filtered_df, migration_col, migration_selected)
-filtered_df = apply_single_filter(filtered_df, year_col, graduation_year_selected)
-filtered_df = apply_single_filter(filtered_df, work_col, work_selected)
+filtered_df = apply_filter(filtered_df, program_col, study_program_selected)
+filtered_df = apply_filter(filtered_df, gender_col, gender_selected)
+filtered_df = apply_filter(filtered_df, age_col, age_selected)
+filtered_df = apply_filter(filtered_df, migration_col, migration_selected)
+filtered_df = apply_filter(filtered_df, year_col, graduation_year_selected)
+filtered_df = apply_filter(filtered_df, work_col, work_selected)
 
 if year_from is not None and year_to is not None:
     if year_from <= year_to:
-        filtered_df = filtered_df[
-            filtered_df["Antwortjahr"].between(year_from, year_to, inclusive="both")
-        ]
+        filtered_df = filtered_df[filtered_df["Antwortjahr"].between(year_from, year_to, inclusive="both")]
     else:
         st.sidebar.warning("Jahr von muss kleiner oder gleich Jahr bis sein.")
         filtered_df = filtered_df.iloc[0:0]
@@ -667,6 +601,7 @@ if year_from is not None and year_to is not None:
 if filtered_df.empty:
     st.error("Mit diesen Filtern gibt es keine Daten.")
     st.stop()
+
 
 mean_scores = {
     "Allgemein": filtered_df["score_allgemein"].mean(),
@@ -697,12 +632,14 @@ if year_col:
 default_label = default_compare_label(comparison_options)
 
 
+st.markdown("<div class='main-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
 tabs = st.tabs(["Übersicht", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
 
 st.markdown(
     "<div class='main-note'><strong>Hinweis:</strong> 5 = beste Bewertung, 1 = schlechteste Bewertung.</div>",
     unsafe_allow_html=True,
 )
+
 
 with tabs[0]:
     m1, m2, m3, m4, m5 = st.columns(5)
@@ -724,9 +661,9 @@ with tabs[0]:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
         st.markdown("<div class='section-title'>Ergebnislage</div>", unsafe_allow_html=True)
 
-        top1, top2 = st.columns([1.2, 1])
+        c1, c2 = st.columns([1.2, 1])
 
-        with top1:
+        with c1:
             score_df = pd.DataFrame({
                 "Dimension": list(mean_scores.keys()),
                 "Mittelwert": list(mean_scores.values()),
@@ -740,17 +677,16 @@ with tabs[0]:
                     color="Dimension",
                     color_discrete_map=DIMENSION_COLORS,
                     text_auto=".2f",
-                    title="Durchschnitt pro Dimension"
+                    title="Durchschnitt pro Dimension",
                 )
-                fig = style_fig(fig, height=320)
+                fig = style_fig(fig, 320)
                 fig.update_layout(showlegend=False)
-                fig.update_xaxes(title=None)
-                fig.update_yaxes(range=[1, 5], title=None)
+                fig.update_yaxes(range=[1, 5])
                 render_plot(fig)
             else:
                 st.info("Keine Score-Daten vorhanden.")
 
-        with top2:
+        with c2:
             render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
 
     avg_box = st.container(border=True)
@@ -838,9 +774,9 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
         st.markdown("<div class='section-title'>Ergebnisse innerhalb der Dimension</div>", unsafe_allow_html=True)
 
-        top_left, top_right = st.columns([1.35, 1])
+        left, right = st.columns([1.35, 1])
 
-        with top_left:
+        with left:
             render_plot(
                 make_item_mean_chart(
                     filtered_df,
@@ -851,14 +787,8 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                 )
             )
 
-        with top_right:
-            render_plot(
-                make_distribution_chart(
-                    filtered_df,
-                    score_col,
-                    f"{tab_name}: Verteilung"
-                )
-            )
+        with right:
+            render_plot(make_distribution_chart(filtered_df, score_col, f"{tab_name}: Verteilung"))
 
         render_question_legend(tab_name, labels_map)
 
@@ -877,7 +807,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
         selected_col = comparison_options[selected_label]
         orientation = comparison_orientation(selected_label)
 
-        group_values = get_filter_options(filtered_df[selected_col]) if selected_col else []
+        group_values = get_options(filtered_df[selected_col]) if selected_col else []
 
         if group_values:
             st.markdown(f"<div class='subsection-title'>Fragenvergleich nach {selected_label}</div>", unsafe_allow_html=True)
@@ -914,7 +844,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                     f"{tab_name}: Durchschnitt nach {selected_label}",
                     orientation=orientation,
                     height=340,
-                    color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"])
+                    color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"]),
                 )
             )
 
@@ -926,7 +856,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                     f"{tab_name}: Personenzahl nach {selected_label}",
                     orientation=orientation,
                     height=340,
-                    color=UI_COLORS["count"]
+                    color=UI_COLORS["count"],
                 )
             )
 
@@ -938,7 +868,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                 f"{tab_name}: Verteilung innerhalb der Gruppen ({selected_label})",
                 orientation=orientation,
                 height=380,
-                color=UI_COLORS["distribution"]
+                color=UI_COLORS["distribution"],
             )
         )
 
