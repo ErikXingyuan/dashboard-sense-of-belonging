@@ -505,7 +505,7 @@ def render_plot(fig):
 
 def render_question_legend(tab_name, labels_map):
     with st.expander(f"Fragenübersicht {tab_name}"):
-        for full_question, short_label in labels_map.items():
+        for full_question, short_label in reversed(list(labels_map.items())):
             st.markdown(f"**{short_label}** — {full_question}")
 
 
