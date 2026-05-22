@@ -7,7 +7,7 @@ import plotly.express as px
 import streamlit as st
 
 
-st.set_page_config(page_title="HSLU Sense of Belonging", layout="wide")
+st.set_page_config(page_title="HSLU Sense of Belonging (SoB)", layout="wide")
 
 if "freitext_seed" not in st.session_state:
     st.session_state["freitext_seed"] = 42
@@ -51,7 +51,22 @@ st.markdown(
             color: #5a5f66;
             font-size: 0.95rem;
             margin-top: 0.1rem;
+            margin-bottom: 0.85rem;
+        }
+
+        .info-card {
+            background: #f6f7f9;
+            border: 1px solid #e3e5e8;
+            border-radius: 14px;
+            padding: 0.9rem 1rem;
             margin-bottom: 1rem;
+            color: #2f343a;
+            font-size: 0.96rem;
+            line-height: 1.5;
+        }
+
+        .info-card strong {
+            color: #1f1f1f;
         }
 
         [data-baseweb="tab-list"] {
@@ -533,6 +548,26 @@ def render_random_text_column(title, series, seed, min_quotes=1, max_quotes=3, m
         st.markdown(f"> {quote}")
 
 
+def build_data_basis_text(data, total_answers, timestamp_col):
+    shown_answers = len(data)
+
+    if timestamp_col and timestamp_col in data.columns and data[timestamp_col].notna().any():
+        start_date = data[timestamp_col].min().strftime("%d.%m.%Y")
+        end_date = data[timestamp_col].max().strftime("%d.%m.%Y")
+
+        if start_date == end_date:
+            period_text = f"Erhebungsdatum der aktuell gefilterten Daten: {start_date}."
+        else:
+            period_text = f"Erhebungszeitraum der aktuell gefilterten Daten: {start_date} bis {end_date}."
+
+        return f"{period_text} Aktuell angezeigt: {shown_answers} von {total_answers} Antworten."
+
+    return (
+        "Ein Erhebungszeitraum kann nicht angezeigt werden, weil keine gültige Timestamp-Spalte gefunden wurde. "
+        f"Aktuell angezeigt: {shown_answers} von {total_answers} Antworten."
+    )
+
+
 raw_df = load_data()
 
 if raw_df is None:
@@ -564,7 +599,7 @@ year_from = None
 year_to = None
 
 with st.sidebar:
-    st.markdown("<div class='sidebar-title'>HSLU Sense of Belonging</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-title'>HSLU Sense of Belonging (SoB)</div>", unsafe_allow_html=True)
     st.markdown("### Filter")
 
     if df["Antwortjahr"].notna().any():
@@ -630,23 +665,36 @@ if year_col:
     comparison_options["Abschlussjahr"] = year_col
 
 default_label = default_compare_label(comparison_options)
+data_basis_text = build_data_basis_text(filtered_df, len(df), timestamp_col)
 
 
-tabs = st.tabs(["Übersicht", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
-
+st.markdown("<div class='main-title'>HSLU Sense of Belonging (SoB)</div>", unsafe_allow_html=True)
 st.markdown(
-    "<div class='main-note'><strong>Hinweis:</strong> 5 = beste Bewertung, 1 = schlechteste Bewertung.</div>",
+    "<div class='main-note'>Interaktives Dashboard zur Visualisierung von Sense-of-Belonging-Daten im Departement Informatik.</div>",
     unsafe_allow_html=True,
 )
+st.markdown(
+    f"""
+    <div class='info-card'>
+        <strong>Interpretationshinweis:</strong> Höhere Werte zeigen eine stärkere Ausprägung des Sense of Belonging.
+        5 = höchste Ausprägung des SoB, 1 = niedrigste Ausprägung.<br>
+        <strong>Datenbasis:</strong> Anonymisierte Antworten aus der Google-Forms-Umfrage
+        «Sense of Belonging im Studium». {data_basis_text}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+tabs = st.tabs(["Übersicht", "Allgemein", "Sozial", "Akademisch", "Vielfalt"])
 
 
 with tabs[0]:
     m1, m2, m3, m4, m5 = st.columns(5)
 
     m1.metric("Antworten", len(filtered_df))
-    m2.metric("Ø Gesamt", f"{overall_mean:.2f} / 5" if pd.notna(overall_mean) else "-")
-    m3.metric("Positivste Dimension", best_dimension)
-    m4.metric("Grösstes Verbesserungspotenzial", weakest_dimension)
+    m2.metric("Ø SoB Gesamt", f"{overall_mean:.2f} / 5" if pd.notna(overall_mean) else "-")
+    m3.metric("Stärkste SoB-Dimension", best_dimension)
+    m4.metric("Niedrigste SoB-Dimension", weakest_dimension)
 
     if year_from is not None and year_to is not None:
         m5.metric("Antwortjahr", f"{year_from} - {year_to}")
@@ -676,7 +724,7 @@ with tabs[0]:
                     color="Dimension",
                     color_discrete_map=DIMENSION_COLORS,
                     text_auto=".2f",
-                    title="Durchschnitt pro Dimension",
+                    title="Durchschnittlicher SoB pro Dimension",
                 )
                 fig = style_fig(fig, 320)
                 fig.update_layout(showlegend=False)
@@ -686,28 +734,28 @@ with tabs[0]:
                 st.info("Keine Score-Daten vorhanden.")
 
         with c2:
-            render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der Gesamtwerte"))
+            render_plot(make_distribution_chart(filtered_df, "score_overall", "Verteilung der SoB-Gesamtwerte"))
 
     avg_box = st.container(border=True)
     with avg_box:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-title'>Durchschnitt nach demografischen Daten</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Durchschnittlicher SoB nach demografischen Daten</div>", unsafe_allow_html=True)
 
         row1 = st.columns(3)
         with row1[0]:
-            render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Geschlecht"))
+            render_plot(make_mean_bar(filtered_df, gender_col, "score_overall", "Ø SoB nach Geschlecht"))
         with row1[1]:
-            render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Alter"))
+            render_plot(make_mean_bar(filtered_df, age_col, "score_overall", "Ø SoB nach Alter"))
         with row1[2]:
-            render_plot(make_mean_bar(filtered_df, migration_col, "score_overall", "Migrationshintergrund"))
+            render_plot(make_mean_bar(filtered_df, migration_col, "score_overall", "Ø SoB nach Migrationshintergrund"))
 
         row2 = st.columns(3)
         with row2[0]:
-            render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Studiengang", orientation="h"))
+            render_plot(make_mean_bar(filtered_df, program_col, "score_overall", "Ø SoB nach Studiengang", orientation="h"))
         with row2[1]:
-            render_plot(make_mean_bar(filtered_df, work_col, "score_overall", "Nebenjob", orientation="h"))
+            render_plot(make_mean_bar(filtered_df, work_col, "score_overall", "Ø SoB nach Nebenjob", orientation="h"))
         with row2[2]:
-            render_plot(make_mean_bar(filtered_df, year_col, "score_overall", "Abschlussjahr", orientation="h"))
+            render_plot(make_mean_bar(filtered_df, year_col, "score_overall", "Ø SoB nach Abschlussjahr", orientation="h"))
 
     count_box = st.container(border=True)
     with count_box:
@@ -780,21 +828,21 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                 make_item_mean_chart(
                     filtered_df,
                     question_cols,
-                    f"{tab_name}: Mittelwert pro Frage",
+                    f"{tab_name}: durchschnittlicher SoB pro Frage",
                     color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"]),
                     labels_map=labels_map,
                 )
             )
 
         with right:
-            render_plot(make_distribution_chart(filtered_df, score_col, f"{tab_name}: Verteilung"))
+            render_plot(make_distribution_chart(filtered_df, score_col, f"{tab_name}: Verteilung der SoB-Werte"))
 
         render_question_legend(tab_name, labels_map)
 
     compare_box = st.container(border=True)
     with compare_box:
         st.markdown("<div class='panel-marker'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-title'>Demografische Gegenüberstellung</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Demografische SoB-Gegenüberstellung</div>", unsafe_allow_html=True)
 
         selected_label = st.selectbox(
             "Demografie",
@@ -840,7 +888,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                     filtered_df,
                     selected_col,
                     score_col,
-                    f"{tab_name}: Durchschnitt nach {selected_label}",
+                    f"{tab_name}: durchschnittlicher SoB nach {selected_label}",
                     orientation=orientation,
                     height=340,
                     color=DIMENSION_COLORS.get(tab_name, UI_COLORS["neutral_blue"]),
@@ -864,7 +912,7 @@ def render_detail_tab(tab_name, score_col, question_cols, select_key):
                 filtered_df,
                 selected_col,
                 score_col,
-                f"{tab_name}: Verteilung innerhalb der Gruppen ({selected_label})",
+                f"{tab_name}: SoB-Verteilung innerhalb der Gruppen ({selected_label})",
                 orientation=orientation,
                 height=380,
                 color=UI_COLORS["distribution"],
