@@ -667,7 +667,6 @@ with st.sidebar:
     else:
         st.warning(f"Logo nicht gefunden: {LOGO_FILE}")
 
-    st.markdown("<div class='sidebar-title'>HSLU Sense of Belonging (SoB)</div>", unsafe_allow_html=True)
     st.markdown("### Filter")
 
     if df["Antwortjahr"].notna().any():
