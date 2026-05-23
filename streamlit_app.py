@@ -137,7 +137,8 @@ st.markdown(
 )
 
 
-DEFAULT_FILE = "Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
+DEFAULT_FILE = "data/Fragebogen_ Sense of Belonging im Studium (Responses).xlsx"
+LOGO_FILE = "image/HSLU_Logo_DE_Schwarz_rgb.png"
 
 SCREENSHOT_IGNORE_KEYWORDS = [
     "erste person in ihrer familie",
@@ -548,30 +549,23 @@ def render_random_text_column(title, series, seed, min_quotes=1, max_quotes=3, m
         st.markdown(f"> {quote}")
 
 
-def build_data_basis_text(data, total_answers, timestamp_col):
-    shown_answers = len(data)
-
+def build_data_basis_text(data, timestamp_col):
     if timestamp_col and timestamp_col in data.columns and data[timestamp_col].notna().any():
         start_date = data[timestamp_col].min().strftime("%d.%m.%Y")
         end_date = data[timestamp_col].max().strftime("%d.%m.%Y")
 
         if start_date == end_date:
-            period_text = f"Erhebungsdatum der aktuell gefilterten Daten: {start_date}."
-        else:
-            period_text = f"Erhebungszeitraum der aktuell gefilterten Daten: {start_date} bis {end_date}."
+            return f"Erhebungsdatum: {start_date}."
 
-        return f"{period_text} Aktuell angezeigt: {shown_answers} von {total_answers} Antworten."
+        return f"Erhebungszeitraum: {start_date} bis {end_date}."
 
-    return (
-        "Ein Erhebungszeitraum kann nicht angezeigt werden, weil keine gültige Timestamp-Spalte gefunden wurde. "
-        f"Aktuell angezeigt: {shown_answers} von {total_answers} Antworten."
-    )
+    return "Ein Erhebungszeitraum kann nicht angezeigt werden, weil keine gültige Timestamp-Spalte gefunden wurde."
 
 
 raw_df = load_data()
 
 if raw_df is None:
-    st.error(f"Datei nicht gefunden: {DEFAULT_FILE}. Lege die Excel-Datei in denselben Ordner wie die App.")
+    st.error(f"Datei nicht gefunden: {DEFAULT_FILE}. Lege die Excel-Datei in den Ordner data.")
     st.stop()
 
 df, groups = add_scores(raw_df)
@@ -665,14 +659,23 @@ if year_col:
     comparison_options["Abschlussjahr"] = year_col
 
 default_label = default_compare_label(comparison_options)
-data_basis_text = build_data_basis_text(filtered_df, len(df), timestamp_col)
+data_basis_text = build_data_basis_text(filtered_df, timestamp_col)
 
 
-st.markdown("<div class='main-title'>HSLU Sense of Belonging (SoB)</div>", unsafe_allow_html=True)
-st.markdown(
-    "<div class='main-note'>Interaktives Dashboard zur Visualisierung von Sense-of-Belonging-Daten im Departement Informatik.</div>",
-    unsafe_allow_html=True,
-)
+top_left, top_right = st.columns([4, 1])
+
+with top_left:
+    st.markdown(
+        "<div class='main-note'>Interaktives Dashboard zur Visualisierung von Sense-of-Belonging-Daten im Departement Informatik.</div>",
+        unsafe_allow_html=True,
+    )
+
+with top_right:
+    if os.path.exists(LOGO_FILE):
+        st.image(LOGO_FILE, use_container_width=True)
+    else:
+        st.warning(f"Logo nicht gefunden: {LOGO_FILE}")
+
 st.markdown(
     f"""
     <div class='info-card'>
