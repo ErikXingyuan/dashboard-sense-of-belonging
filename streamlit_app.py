@@ -593,6 +593,11 @@ year_from = None
 year_to = None
 
 with st.sidebar:
+    if os.path.exists(LOGO_FILE):
+        st.image(LOGO_FILE, use_container_width=True)
+    else:
+        st.warning(f"Logo nicht gefunden: {LOGO_FILE}")
+
     st.markdown("<div class='sidebar-title'>HSLU Sense of Belonging (SoB)</div>", unsafe_allow_html=True)
     st.markdown("### Filter")
 
@@ -662,19 +667,12 @@ default_label = default_compare_label(comparison_options)
 data_basis_text = build_data_basis_text(filtered_df, timestamp_col)
 
 
-top_left, top_right = st.columns([4, 1])
+st.markdown("<div class='main-title'>HSLU Sense of Belonging (SoB)</div>", unsafe_allow_html=True)
 
-with top_left:
-    st.markdown(
-        "<div class='main-note'>Interaktives Dashboard zur Visualisierung von Sense-of-Belonging-Daten im Departement Informatik.</div>",
-        unsafe_allow_html=True,
-    )
-
-with top_right:
-    if os.path.exists(LOGO_FILE):
-        st.image(LOGO_FILE, use_container_width=True)
-    else:
-        st.warning(f"Logo nicht gefunden: {LOGO_FILE}")
+st.markdown(
+    "<div class='main-note'>Interaktives Dashboard zur Visualisierung von Sense-of-Belonging-Daten im Departement Informatik.</div>",
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     f"""
